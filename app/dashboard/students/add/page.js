@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client"; // آپ کا موجودہ Supabase کلائنٹ
+// پاتھ تبدیل کر دیا گیا ہے
+import { createClient } from "@/lib/supabase"; 
 
 export default function AddStudent() {
   const router = useRouter();
-  const supabase = createClient();
-
+  
   // Loading اور Error States
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(true);
@@ -40,15 +40,15 @@ export default function AddStudent() {
     status: "Active",
   });
 
-  // پیج لوڈ ہوتے ہی ضروری ڈیٹا (Programs, Batches, Teachers) منگوانا
   useEffect(() => {
     async function loadFormData() {
       try {
+        const supabase = createClient();
+        
         // 1. لاگ ان یوزر اور اس کی Organization معلوم کرنا
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) throw new Error("Authentication error");
 
-        // یوزر کی آرگنائزیشن ID حاصل کرنا (RLS کی وجہ سے صرف اسی کی org آئے گی)
         const { data: orgMember } = await supabase
           .from("organization_members")
           .select("organization_id")
@@ -75,22 +75,19 @@ export default function AddStudent() {
       }
     }
     loadFormData();
-  }, [supabase]);
+  }, []);
 
-  // ان پٹ فیلڈز کو ہینڈل کرنا
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
-  // فارم سبمٹ کرنا
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(false);
 
-    // Validation (ماہانہ فیس 0 یا اس سے زیادہ ہونی چاہیے)
     if (formData.monthly_fee < 0) {
       setError("ماہانہ فیس 0 سے کم نہیں ہو سکتی۔");
       setLoading(false);
@@ -98,19 +95,19 @@ export default function AddStudent() {
     }
 
     try {
+      const supabase = createClient();
       const { error: insertError } = await supabase.from("students").insert([
         {
           ...formData,
-          organization_id: orgId, // یوزر کی آرگنائزیشن خودکار طور پر شامل کی گئی
+          organization_id: orgId,
           monthly_fee: Number(formData.monthly_fee) || 0,
-          dob: formData.dob || null, // Empty string کو null میں بدلنا تاکہ date error نہ آئے
+          dob: formData.dob || null,
         }
       ]);
 
       if (insertError) throw insertError;
 
       setSuccess(true);
-      // تھوڑی دیر بعد Students List پر واپس بھیج دینا
       setTimeout(() => {
         router.push("/dashboard/students");
       }, 2000);
@@ -133,7 +130,7 @@ export default function AddStudent() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         
-        {/* === Student Information === */}
+        {/* Student Information */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-blue-600">طالب علم کی معلومات</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -170,7 +167,7 @@ export default function AddStudent() {
           </div>
         </section>
 
-        {/* === Contact & Fee Information === */}
+        {/* Contact & Fee Information */}
         <section className="space-y-4 pt-4 border-t">
           <h2 className="text-lg font-semibold text-blue-600">رابطہ اور فیس کی تفصیلات</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -200,4 +197,4 @@ export default function AddStudent() {
     </div>
   );
         }
-                  
+  
