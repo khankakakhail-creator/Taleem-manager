@@ -11,19 +11,16 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export default function AddStudent() {
   const router = useRouter();
 
-  // Loading اور Error States
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
-  // Dynamic Dropdown States
   const [programs, setPrograms] = useState([]);
   const [batches, setBatches] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [orgId, setOrgId] = useState(null);
 
-  // Form Data State
   const [formData, setFormData] = useState({
     name: "",
     father_name: "",
@@ -43,15 +40,12 @@ export default function AddStudent() {
     status: "Active",
   });
 
-  // پیج لوڈ ہوتے ہی ضروری ڈیٹا منگوانا
   useEffect(() => {
     async function loadFormData() {
       try {
-        // 1. لاگ ان یوزر اور اس کی Organization معلوم کرنا
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) throw new Error("Authentication error");
 
-        // یوزر کی آرگنائزیشن ID حاصل کرنا
         const { data: orgMember } = await supabase
           .from("organization_members")
           .select("organization_id")
@@ -60,7 +54,6 @@ export default function AddStudent() {
         
         if (orgMember) setOrgId(orgMember.organization_id);
 
-        // 2. Programs, Batches اور Teachers کا ڈیٹا لوڈ کرنا
         const [programsRes, batchesRes, teachersRes] = await Promise.all([
           supabase.from("programs").select("id, name"),
           supabase.from("batches").select("id, name"),
@@ -80,20 +73,17 @@ export default function AddStudent() {
     loadFormData();
   }, []);
 
-  // ان پٹ فیلڈز کو ہینڈل کرنا
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
-  // فارم سبمٹ کرنا
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(false);
 
-    // Validation
     if (formData.monthly_fee < 0) {
       setError("ماہانہ فیس 0 سے کم نہیں ہو سکتی۔");
       setLoading(false);
@@ -104,9 +94,13 @@ export default function AddStudent() {
       const { error: insertError } = await supabase.from("students").insert([
         {
           ...formData,
-          organization_id: orgId, // یوزر کی آرگنائزیشن خودکار طور پر شامل کی گئی
+          organization_id: orgId,
           monthly_fee: Number(formData.monthly_fee) || 0,
-          dob: formData.dob || null, // Empty string کو null میں بدلنا
+          dob: formData.dob || null,
+          // خالی سٹرنگ ("") کو null میں تبدیل کر دیا گیا ہے تاکہ UUID کا ایرر نہ آئے
+          program_id: formData.program_id || null,
+          batch_id: formData.batch_id || null,
+          primary_teacher_id: formData.primary_teacher_id || null,
         }
       ]);
 
@@ -135,7 +129,6 @@ export default function AddStudent() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         
-        {/* === Student Information === */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-blue-600">طالب علم کی معلومات</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -172,7 +165,6 @@ export default function AddStudent() {
           </div>
         </section>
 
-        {/* === Contact & Fee Information === */}
         <section className="space-y-4 pt-4 border-t">
           <h2 className="text-lg font-semibold text-blue-600">رابطہ اور فیس کی تفصیلات</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -191,7 +183,6 @@ export default function AddStudent() {
           </div>
         </section>
 
-        {/* Submit Button */}
         <div className="pt-4">
           <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded hover:bg-blue-700 disabled:opacity-50">
             {loading ? "محفوظ کیا جا رہا ہے..." : "طالب علم محفوظ کریں"}
@@ -201,5 +192,4 @@ export default function AddStudent() {
       </form>
     </div>
   );
-        }
-                  
+}
