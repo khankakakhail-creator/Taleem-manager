@@ -2,12 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-// پاتھ تبدیل کر دیا گیا ہے
-import { createClient } from "@/lib/supabase"; 
+import { createClient } from "@supabase/supabase-js";
+
+// پاتھ کا مسئلہ ختم کرنے کے لیے ہم براہ راست Supabase کو یہیں کنیکٹ کر رہے ہیں
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function AddStudent() {
   const router = useRouter();
-  
+
   // Loading اور Error States
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(true);
@@ -40,15 +44,15 @@ export default function AddStudent() {
     status: "Active",
   });
 
+  // پیج لوڈ ہوتے ہی ضروری ڈیٹا منگوانا
   useEffect(() => {
     async function loadFormData() {
       try {
-        const supabase = createClient();
-        
         // 1. لاگ ان یوزر اور اس کی Organization معلوم کرنا
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) throw new Error("Authentication error");
 
+        // یوزر کی آرگنائزیشن ID حاصل کرنا
         const { data: orgMember } = await supabase
           .from("organization_members")
           .select("organization_id")
@@ -77,17 +81,20 @@ export default function AddStudent() {
     loadFormData();
   }, []);
 
+  // ان پٹ فیلڈز کو ہینڈل کرنا
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
+  // فارم سبمٹ کرنا
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(false);
 
+    // Validation
     if (formData.monthly_fee < 0) {
       setError("ماہانہ فیس 0 سے کم نہیں ہو سکتی۔");
       setLoading(false);
@@ -95,13 +102,12 @@ export default function AddStudent() {
     }
 
     try {
-      const supabase = createClient();
       const { error: insertError } = await supabase.from("students").insert([
         {
           ...formData,
-          organization_id: orgId,
+          organization_id: orgId, // یوزر کی آرگنائزیشن خودکار طور پر شامل کی گئی
           monthly_fee: Number(formData.monthly_fee) || 0,
-          dob: formData.dob || null,
+          dob: formData.dob || null, // Empty string کو null میں بدلنا
         }
       ]);
 
@@ -119,7 +125,7 @@ export default function AddStudent() {
     }
   };
 
-  if (fetchingData) return <div className="p-4 text-center">ڈیٹا لوڈ ہو رہا ہے...</div>;
+  if (fetchingData) return <div className="p-4 text-center text-gray-600">ڈیٹا لوڈ ہو رہا ہے...</div>;
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white rounded-lg shadow-sm mt-4">
@@ -130,7 +136,7 @@ export default function AddStudent() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         
-        {/* Student Information */}
+        {/* === Student Information === */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-blue-600">طالب علم کی معلومات</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -167,7 +173,7 @@ export default function AddStudent() {
           </div>
         </section>
 
-        {/* Contact & Fee Information */}
+        {/* === Contact & Fee Information === */}
         <section className="space-y-4 pt-4 border-t">
           <h2 className="text-lg font-semibold text-blue-600">رابطہ اور فیس کی تفصیلات</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -196,5 +202,4 @@ export default function AddStudent() {
       </form>
     </div>
   );
-        }
-  
+          }
