@@ -46,13 +46,20 @@ export default function AddStudent() {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) throw new Error("Authentication error");
 
-        const { data: orgMember } = await supabase
+        // یوزر کی آرگنائزیشن ID حاصل کرنا (ایرر ہینڈلنگ کے ساتھ)
+        const { data: orgMember, error: orgError } = await supabase
           .from("organization_members")
           .select("organization_id")
           .eq("user_id", user.id)
+          .limit(1)
           .single();
         
-        if (orgMember) setOrgId(orgMember.organization_id);
+        if (orgMember) {
+          setOrgId(orgMember.organization_id);
+        } else {
+          // اگر آرگنائزیشن نہیں ملتی تو اسے واضح طور پر بتائیں
+          throw new Error("آپ کا اکاؤنٹ کسی آرگنائزیشن سے منسلک نہیں ہے۔");
+        }
 
         const [programsRes, batchesRes, teachersRes] = await Promise.all([
           supabase.from("programs").select("id, name"),
@@ -84,6 +91,13 @@ export default function AddStudent() {
     setError(null);
     setSuccess(false);
 
+    // سیکیورٹی چیک: اگر orgId نہیں ہے تو فارم کو روک دیں
+    if (!orgId) {
+      setError("سیکیورٹی ایرر: Organization ID غائب ہے۔ براہ کرم پیج ریفریش کریں یا دوبارہ لاگ ان کریں۔");
+      setLoading(false);
+      return;
+    }
+
     if (formData.monthly_fee < 0) {
       setError("ماہانہ فیس 0 سے کم نہیں ہو سکتی۔");
       setLoading(false);
@@ -97,7 +111,6 @@ export default function AddStudent() {
           organization_id: orgId,
           monthly_fee: Number(formData.monthly_fee) || 0,
           dob: formData.dob || null,
-          // خالی سٹرنگ ("") کو null میں تبدیل کر دیا گیا ہے تاکہ UUID کا ایرر نہ آئے
           program_id: formData.program_id || null,
           batch_id: formData.batch_id || null,
           primary_teacher_id: formData.primary_teacher_id || null,
@@ -124,8 +137,8 @@ export default function AddStudent() {
     <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white rounded-lg shadow-sm mt-4">
       <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">نیا طالب علم شامل کریں</h1>
 
-      {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm">{error}</div>}
-      {success && <div className="bg-green-50 text-green-600 p-3 rounded mb-4 text-sm">طالب علم کا ریکارڈ کامیابی سے محفوظ ہو گیا!</div>}
+      {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm font-medium">{error}</div>}
+      {success && <div className="bg-green-50 text-green-600 p-3 rounded mb-4 text-sm font-medium">طالب علم کا ریکارڈ کامیابی سے محفوظ ہو گیا!</div>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         
