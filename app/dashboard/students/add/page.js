@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/utils/supabase";
 
 export default function AddStudent() {
   const router = useRouter();
@@ -15,7 +15,9 @@ export default function AddStudent() {
   const [programs, setPrograms] = useState([]);
   const [batches, setBatches] = useState([]);
   const [teachers, setTeachers] = useState([]);
+
   const [orgId, setOrgId] = useState(null);
+  const [userId, setUserId] = useState(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -42,22 +44,37 @@ export default function AddStudent() {
         setFetchingData(true);
         setError(null);
 
+        // ==========================================
         // 1. Get logged-in user
+        // ==========================================
+
         const {
           data: { user },
           error: userError,
         } = await supabase.auth.getUser();
 
-        if (userError) throw userError;
+        if (userError) {
+          throw new Error(
+            "Login session حاصل نہیں ہو سکی: " + userError.message
+          );
+        }
 
         if (!user) {
           throw new Error("براہ کرم پہلے لاگ اِن کریں۔");
         }
 
+        setUserId(user.id);
+
+        // ==========================================
         // 2. Get user's organization
-        const { data: orgMember, error: orgError } = await supabase
+        // ==========================================
+
+        const {
+          data: orgMember,
+          error: orgError,
+        } = await supabase
           .from("organization_members")
-          .select("organization_id")
+          .select("organization_id, user_id, role")
           .eq("user_id", user.id)
           .limit(1)
           .maybeSingle();
@@ -70,7 +87,7 @@ export default function AddStudent() {
 
         if (!orgMember?.organization_id) {
           throw new Error(
-            "آپ کا اکاؤنٹ کسی Organization سے منسلک نہیں ہے۔"
+            "Organization نہیں ملی۔ User ID: " + user.id
           );
         }
 
@@ -78,18 +95,25 @@ export default function AddStudent() {
 
         setOrgId(currentOrgId);
 
+        // ==========================================
         // 3. Load Programs, Batches and Teachers
-        const [programsRes, batchesRes, teachersRes] = await Promise.all([
+        // ==========================================
+
+        const [
+          programsRes,
+          batchesRes,
+          teachersRes,
+        ] = await Promise.all([
           supabase
             .from("programs")
-            .select("id, name")
+            .select("id, name, active")
             .eq("organization_id", currentOrgId)
             .eq("active", true)
             .order("name"),
 
           supabase
             .from("batches")
-            .select("id, name")
+            .select("id, name, active")
             .eq("organization_id", currentOrgId)
             .eq("active", true)
             .order("name"),
@@ -101,21 +125,36 @@ export default function AddStudent() {
             .in("role", ["owner", "admin", "teacher"]),
         ]);
 
+        // ==========================================
+        // Programs error
+        // ==========================================
+
         if (programsRes.error) {
           throw new Error(
-            "Programs load نہیں ہوئے: " + programsRes.error.message
+            "Programs load نہیں ہوئے: " +
+              programsRes.error.message
           );
         }
+
+        // ==========================================
+        // Batches error
+        // ==========================================
 
         if (batchesRes.error) {
           throw new Error(
-            "Batches load نہیں ہوئے: " + batchesRes.error.message
+            "Batches load نہیں ہوئے: " +
+              batchesRes.error.message
           );
         }
 
+        // ==========================================
+        // Teachers error
+        // ==========================================
+
         if (teachersRes.error) {
           throw new Error(
-            "Teachers load نہیں ہوئے: " + teachersRes.error.message
+            "Teachers load نہیں ہوئے: " +
+              teachersRes.error.message
           );
         }
 
@@ -126,23 +165,41 @@ export default function AddStudent() {
         setPrograms(programData);
         setBatches(batchData);
 
-        // 4. Get teacher profiles separately
-        if (memberData.length > 0) {
-          const userIds = memberData.map((member) => member.user_id);
+        // ==========================================
+        // 4. Load teacher profiles
+        // ==========================================
 
-          const { data: profilesData, error: profilesError } =
-            await supabase
-              .from("profiles")
-              .select("id, full_name")
-              .in("id", userIds);
+        if (memberData.length > 0) {
+          const userIds = memberData.map(
+            (member) => member.user_id
+          );
+
+          const {
+            data: profilesData,
+            error: profilesError,
+          } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", userIds);
+
+          // Profile RLS کی وجہ سے names نہ ملیں
+          // تو بھی teachers دکھائے جائیں گے
 
           if (profilesError) {
-            // Profile names unavailable ہونے کی صورت میں بھی
-            // teacher IDs available رکھیں
+            console.log(
+              "Profile names unavailable:",
+              profilesError.message
+            );
+
             setTeachers(
               memberData.map((member) => ({
                 user_id: member.user_id,
-                full_name: "Teacher",
+                full_name:
+                  member.role === "owner"
+                    ? "Owner"
+                    : member.role === "admin"
+                    ? "Admin"
+                    : "Teacher",
                 role: member.role,
               }))
             );
@@ -150,12 +207,14 @@ export default function AddStudent() {
             const profileMap = {};
 
             (profilesData || []).forEach((profile) => {
-              profileMap[profile.id] = profile.full_name;
+              profileMap[profile.id] =
+                profile.full_name;
             });
 
             setTeachers(
               memberData.map((member) => ({
                 user_id: member.user_id,
+
                 full_name:
                   profileMap[member.user_id] ||
                   (member.role === "owner"
@@ -163,6 +222,7 @@ export default function AddStudent() {
                     : member.role === "admin"
                     ? "Admin"
                     : "Teacher"),
+
                 role: member.role,
               }))
             );
@@ -171,7 +231,10 @@ export default function AddStudent() {
           setTeachers([]);
         }
       } catch (err) {
-        console.error("Add Student load error:", err);
+        console.error(
+          "Add Student load error:",
+          err
+        );
 
         setError(
           "ڈیٹا لوڈ کرنے میں مسئلہ: " +
@@ -185,6 +248,10 @@ export default function AddStudent() {
     loadFormData();
   }, []);
 
+  // ==========================================
+  // Handle input changes
+  // ==========================================
+
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -193,6 +260,10 @@ export default function AddStudent() {
       [name]: value,
     }));
   };
+
+  // ==========================================
+  // Submit student
+  // ==========================================
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -209,53 +280,89 @@ export default function AddStudent() {
       }
 
       if (!formData.name.trim()) {
-        throw new Error("طالب علم کا نام درج کریں۔");
+        throw new Error(
+          "طالب علم کا نام درج کریں۔"
+        );
       }
 
       if (!formData.father_name.trim()) {
-        throw new Error("والد کا نام درج کریں۔");
+        throw new Error(
+          "والد کا نام درج کریں۔"
+        );
       }
 
       if (!formData.admission_date) {
-        throw new Error("داخلے کی تاریخ منتخب کریں۔");
+        throw new Error(
+          "داخلے کی تاریخ منتخب کریں۔"
+        );
       }
 
-      const monthlyFee = Number(formData.monthly_fee);
+      const monthlyFee = Number(
+        formData.monthly_fee
+      );
 
-      if (Number.isNaN(monthlyFee) || monthlyFee < 0) {
-        throw new Error("ماہانہ فیس درست درج کریں۔");
+      if (
+        Number.isNaN(monthlyFee) ||
+        monthlyFee < 0
+      ) {
+        throw new Error(
+          "ماہانہ فیس درست درج کریں۔"
+        );
       }
 
       const studentData = {
         organization_id: orgId,
 
         name: formData.name.trim(),
-        father_name: formData.father_name.trim(),
 
-        photo_url: formData.photo_url || null,
-        dob: formData.dob || null,
+        father_name:
+          formData.father_name.trim(),
 
-        gender: formData.gender || null,
-        admission_date: formData.admission_date,
+        photo_url:
+          formData.photo_url.trim() || null,
 
-        program_id: formData.program_id || null,
-        batch_id: formData.batch_id || null,
-        primary_teacher_id: formData.primary_teacher_id || null,
+        dob:
+          formData.dob || null,
+
+        gender:
+          formData.gender || null,
+
+        admission_date:
+          formData.admission_date,
+
+        program_id:
+          formData.program_id || null,
+
+        batch_id:
+          formData.batch_id || null,
+
+        primary_teacher_id:
+          formData.primary_teacher_id || null,
 
         monthly_fee: monthlyFee,
 
-        whatsapp: formData.whatsapp.trim() || null,
-        phone: formData.phone.trim() || null,
+        whatsapp:
+          formData.whatsapp.trim() || null,
+
+        phone:
+          formData.phone.trim() || null,
+
         alternate_phone:
           formData.alternate_phone.trim() || null,
 
-        address: formData.address.trim() || null,
-        notes: formData.notes.trim() || null,
+        address:
+          formData.address.trim() || null,
 
-        status: formData.status || "active",
+        notes:
+          formData.notes.trim() || null,
+
+        status:
+          formData.status || "active",
       };
 
-      const { error: insertError } = await supabase
+      const {
+        error: insertError,
+      } = await supabase
         .from("students")
         .insert([studentData]);
 
@@ -266,10 +373,15 @@ export default function AddStudent() {
       setSuccess(true);
 
       setTimeout(() => {
-        router.push("/dashboard/students");
+        router.push(
+          "/dashboard/students"
+        );
       }, 1200);
     } catch (err) {
-      console.error("Student insert error:", err);
+      console.error(
+        "Student insert error:",
+        err
+      );
 
       setError(
         "طالب علم کا ڈیٹا محفوظ نہیں ہو سکا: " +
@@ -280,6 +392,10 @@ export default function AddStudent() {
     }
   };
 
+  // ==========================================
+  // Loading screen
+  // ==========================================
+
   if (fetchingData) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
@@ -287,6 +403,7 @@ export default function AddStudent() {
           <div className="text-lg font-semibold text-gray-700">
             ڈیٹا لوڈ ہو رہا ہے...
           </div>
+
           <div className="text-sm text-gray-500 mt-2">
             Programs، Batches اور Teachers حاصل کیے جا رہے ہیں
           </div>
@@ -295,6 +412,10 @@ export default function AddStudent() {
     );
   }
 
+  // ==========================================
+  // Main page
+  // ==========================================
+
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white rounded-lg shadow-sm mt-4">
 
@@ -302,11 +423,45 @@ export default function AddStudent() {
         نیا طالب علم شامل کریں
       </h1>
 
+      {/* ======================================
+          Temporary Diagnostic Information
+          ====================================== */}
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs">
+        <div className="font-semibold text-blue-800 mb-1">
+          System Information
+        </div>
+
+        <div className="text-gray-700 break-all">
+          User ID: {userId || "Not found"}
+        </div>
+
+        <div className="text-gray-700 break-all">
+          Organization ID: {orgId || "Not found"}
+        </div>
+
+        <div className="text-gray-700">
+          Programs: {programs.length}
+        </div>
+
+        <div className="text-gray-700">
+          Batches: {batches.length}
+        </div>
+
+        <div className="text-gray-700">
+          Teachers: {teachers.length}
+        </div>
+      </div>
+
+      {/* Error */}
+
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded mb-4 text-sm font-medium">
+        <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded mb-4 text-sm font-medium break-words">
           {error}
         </div>
       )}
+
+      {/* Success */}
 
       {success && (
         <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded mb-4 text-sm font-medium">
@@ -314,9 +469,15 @@ export default function AddStudent() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-6"
+      >
 
-        {/* Student Information */}
+        {/* ======================================
+            Student Information
+            ====================================== */}
+
         <section className="space-y-4">
 
           <h2 className="text-lg font-semibold text-blue-600">
@@ -324,6 +485,8 @@ export default function AddStudent() {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            {/* Name */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -340,6 +503,8 @@ export default function AddStudent() {
               />
             </div>
 
+            {/* Father Name */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 والد کا نام *
@@ -354,6 +519,8 @@ export default function AddStudent() {
                 className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
+            {/* Admission Date */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -370,6 +537,8 @@ export default function AddStudent() {
               />
             </div>
 
+            {/* DOB */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 تاریخ پیدائش
@@ -384,6 +553,8 @@ export default function AddStudent() {
               />
             </div>
 
+            {/* Gender */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 جنس
@@ -395,11 +566,21 @@ export default function AddStudent() {
                 onChange={handleChange}
                 className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">منتخب کریں</option>
-                <option value="male">مرد</option>
-                <option value="female">خاتون</option>
+                <option value="">
+                  منتخب کریں
+                </option>
+
+                <option value="male">
+                  مرد
+                </option>
+
+                <option value="female">
+                  خاتون
+                </option>
               </select>
             </div>
+
+            {/* Program */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -412,10 +593,15 @@ export default function AddStudent() {
                 onChange={handleChange}
                 className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">منتخب کریں</option>
+                <option value="">
+                  منتخب کریں
+                </option>
 
                 {programs.map((program) => (
-                  <option key={program.id} value={program.id}>
+                  <option
+                    key={program.id}
+                    value={program.id}
+                  >
                     {program.name}
                   </option>
                 ))}
@@ -428,6 +614,8 @@ export default function AddStudent() {
               )}
             </div>
 
+            {/* Batch */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Batch
@@ -439,15 +627,28 @@ export default function AddStudent() {
                 onChange={handleChange}
                 className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">منتخب کریں</option>
+                <option value="">
+                  منتخب کریں
+                </option>
 
                 {batches.map((batch) => (
-                  <option key={batch.id} value={batch.id}>
+                  <option
+                    key={batch.id}
+                    value={batch.id}
+                  >
                     {batch.name}
                   </option>
                 ))}
               </select>
+
+              {batches.length === 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ابھی کوئی Active Batch موجود نہیں۔
+                </p>
+              )}
             </div>
+
+            {/* Primary Teacher */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -460,7 +661,9 @@ export default function AddStudent() {
                 onChange={handleChange}
                 className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">منتخب کریں</option>
+                <option value="">
+                  منتخب کریں
+                </option>
 
                 {teachers.map((teacher) => (
                   <option
@@ -482,7 +685,10 @@ export default function AddStudent() {
           </div>
         </section>
 
-        {/* Contact */}
+        {/* ======================================
+            Contact and Fee
+            ====================================== */}
+
         <section className="space-y-4 pt-4 border-t">
 
           <h2 className="text-lg font-semibold text-blue-600">
@@ -490,6 +696,8 @@ export default function AddStudent() {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            {/* WhatsApp */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -505,6 +713,8 @@ export default function AddStudent() {
               />
             </div>
 
+            {/* Phone */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 فون نمبر
@@ -518,6 +728,8 @@ export default function AddStudent() {
                 className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
+            {/* Alternate Phone */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -533,6 +745,8 @@ export default function AddStudent() {
               />
             </div>
 
+            {/* Monthly Fee */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 ماہانہ فیس *
@@ -545,57 +759,4 @@ export default function AddStudent() {
                 required
                 value={formData.monthly_fee}
                 onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                پتہ
-              </label>
-
-              <textarea
-                name="address"
-                rows="2"
-                value={formData.address}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                نوٹس
-              </label>
-
-              <textarea
-                name="notes"
-                rows="2"
-                value={formData.notes}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-          </div>
-        </section>
-
-        {/* Save */}
-        <div className="pt-4">
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading
-              ? "محفوظ کیا جا رہا ہے..."
-              : "طالب علم محفوظ کریں"}
-          </button>
-
-        </div>
-
-      </form>
-    </div>
-  );
-                  }
+                className="w-full border p-2 rounded focus:ring-2 foc
