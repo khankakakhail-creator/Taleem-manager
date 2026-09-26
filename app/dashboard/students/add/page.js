@@ -69,15 +69,7 @@ export default function AddStudent() {
         // 2. Get user's organization
         // ==========================================
 
-        const {
-          data: orgMember,
-          error: orgError,
-        } = await supabase
-          .from("organization_members")
-          .select("organization_id, user_id, role")
-          .eq("user_id", user.id)
-          .limit(1)
-          .maybeSingle();
+        
 
         if (orgError) {
           throw new Error(
@@ -96,7 +88,34 @@ export default function AddStudent() {
         setOrgId(currentOrgId);
 
         // ==========================================
-        // 3. Load Programs, Batches and Teachers
+        // 3. Load Programs, Batcconst {
+  data: orgMember,
+  error: orgError,
+} = await supabase
+  .from("organization_members")
+  .select("organization_id, user_id, role")
+  .eq("user_id", user.id)
+  .maybeSingle();
+
+console.log("CURRENT USER:", user.id);
+console.log("ORG MEMBER:", orgMember);
+console.log("ORG ERROR:", orgError);
+
+if (orgError) {
+  throw new Error(
+    "Organization حاصل نہیں ہو سکی: " + orgError.message
+  );
+}
+
+if (!orgMember) {
+  throw new Error(
+    "Organization membership نہیں ملی۔ User ID: " + user.id
+  );
+}
+
+const currentOrgId = orgMember.organization_id;
+
+setOrgId(currentOrgId);hes and Teachers
         // ==========================================
 
         const [
