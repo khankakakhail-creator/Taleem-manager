@@ -52,6 +52,8 @@ export default function AddStudent() {
           data: { user },
           error: userError,
         } = await supabase.auth.getUser();
+        console.log("LIVE USER:", user);
+alert("Logged-in User ID: " + (user?.id || "NO USER"));
 
         if (userError) {
           throw new Error(
