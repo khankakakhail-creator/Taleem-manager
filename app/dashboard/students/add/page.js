@@ -1,35 +1,33 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/utils/supabase";
+import { supabase } from "../../../../utils/supabase";
 
-export default function AddStudent() {
+export default function AddStudentPage() {
   const router = useRouter();
 
-  const [loading, setLoading] = useState(false);
-  const [fetchingData, setFetchingData] = useState(true);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
 
+  const [orgId, setOrgId] = useState(null);
   const [programs, setPrograms] = useState([]);
   const [batches, setBatches] = useState([]);
   const [teachers, setTeachers] = useState([]);
 
-  const [orgId, setOrgId] = useState(null);
-  const [userId, setUserId] = useState(null);
-
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     name: "",
     father_name: "",
     photo_url: "",
     dob: "",
-    gender: "",
     admission_date: "",
+    gender: "male",
     program_id: "",
     batch_id: "",
     primary_teacher_id: "",
-    monthly_fee: 0,
+    monthly_fee: "",
     whatsapp: "",
     phone: "",
     alternate_phone: "",
@@ -39,745 +37,364 @@ export default function AddStudent() {
   });
 
   useEffect(() => {
-    async function loadFormData() {
-      try {
-        setFetchingData(true);
-        setError(null);
-
-        // ==========================================
-        // 1. Get logged-in user
-        // ==========================================
-
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-        console.log("LIVE USER:", user);
-alert("Logged-in User ID: " + (user?.id || "NO USER"));
-
-        if (userError) {
-          throw new Error(
-            "Login session حاصل نہیں ہو سکی: " + userError.message
-          );
-        }
-
-        if (!user) {
-          throw new Error("براہ کرم پہلے لاگ اِن کریں۔");
-        }
-
-        setUserId(user.id);
-
-        // ==========================================
-        // 2. Get user's organization
-        // ==========================================
-
-        
-
-        if (orgError) {
-          throw new Error(
-            "Organization حاصل نہیں ہو سکی: " + orgError.message
-          );
-        }
-
-        if (!orgMember?.organization_id) {
-          throw new Error(
-            "Organization نہیں ملی۔ User ID: " + user.id
-          );
-        }
-
-        const currentOrgId = orgMember.organization_id;
-
-        setOrgId(currentOrgId);
-
-        // ==========================================
-        // 3. Load Programs, Batcconst {
-  data: orgMember,
-  error: orgError,
-} = await supabase
-  .from("organization_members")
-  .select("organization_id, user_id, role")
-  .eq("user_id", user.id)
-  .maybeSingle();
-
-console.log("CURRENT USER:", user.id);
-console.log("ORG MEMBER:", orgMember);
-console.log("ORG ERROR:", orgError);
-
-if (orgError) {
-  throw new Error(
-    "Organization حاصل نہیں ہو سکی: " + orgError.message
-  );
-}
-
-if (!orgMember) {
-  throw new Error(
-    "Organization membership نہیں ملی۔ User ID: " + user.id
-  );
-}
-
-const currentOrgId = orgMember.organization_id;
-
-setOrgId(currentOrgId);hes and Teachers
-        // ==========================================
-
-        const [
-          programsRes,
-          batchesRes,
-          teachersRes,
-        ] = await Promise.all([
-          supabase
-            .from("programs")
-            .select("id, name, active")
-            .eq("organization_id", currentOrgId)
-            .eq("active", true)
-            .order("name"),
-
-          supabase
-            .from("batches")
-            .select("id, name, active")
-            .eq("organization_id", currentOrgId)
-            .eq("active", true)
-            .order("name"),
-
-          supabase
-            .from("organization_members")
-            .select("user_id, role")
-            .eq("organization_id", currentOrgId)
-            .in("role", ["owner", "admin", "teacher"]),
-        ]);
-
-        // ==========================================
-        // Programs error
-        // ==========================================
-
-        if (programsRes.error) {
-          throw new Error(
-            "Programs load نہیں ہوئے: " +
-              programsRes.error.message
-          );
-        }
-
-        // ==========================================
-        // Batches error
-        // ==========================================
-
-        if (batchesRes.error) {
-          throw new Error(
-            "Batches load نہیں ہوئے: " +
-              batchesRes.error.message
-          );
-        }
-
-        // ==========================================
-        // Teachers error
-        // ==========================================
-
-        if (teachersRes.error) {
-          throw new Error(
-            "Teachers load نہیں ہوئے: " +
-              teachersRes.error.message
-          );
-        }
-
-        const programData = programsRes.data || [];
-        const batchData = batchesRes.data || [];
-        const memberData = teachersRes.data || [];
-
-        setPrograms(programData);
-        setBatches(batchData);
-
-        // ==========================================
-        // 4. Load teacher profiles
-        // ==========================================
-
-        if (memberData.length > 0) {
-          const userIds = memberData.map(
-            (member) => member.user_id
-          );
-
-          const {
-            data: profilesData,
-            error: profilesError,
-          } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", userIds);
-
-          // Profile RLS کی وجہ سے names نہ ملیں
-          // تو بھی teachers دکھائے جائیں گے
-
-          if (profilesError) {
-            console.log(
-              "Profile names unavailable:",
-              profilesError.message
-            );
-
-            setTeachers(
-              memberData.map((member) => ({
-                user_id: member.user_id,
-                full_name:
-                  member.role === "owner"
-                    ? "Owner"
-                    : member.role === "admin"
-                    ? "Admin"
-                    : "Teacher",
-                role: member.role,
-              }))
-            );
-          } else {
-            const profileMap = {};
-
-            (profilesData || []).forEach((profile) => {
-              profileMap[profile.id] =
-                profile.full_name;
-            });
-
-            setTeachers(
-              memberData.map((member) => ({
-                user_id: member.user_id,
-
-                full_name:
-                  profileMap[member.user_id] ||
-                  (member.role === "owner"
-                    ? "Owner"
-                    : member.role === "admin"
-                    ? "Admin"
-                    : "Teacher"),
-
-                role: member.role,
-              }))
-            );
-          }
-        } else {
-          setTeachers([]);
-        }
-      } catch (err) {
-        console.error(
-          "Add Student load error:",
-          err
-        );
-
-        setError(
-          "ڈیٹا لوڈ کرنے میں مسئلہ: " +
-            (err?.message || "Unknown error")
-        );
-      } finally {
-        setFetchingData(false);
-      }
-    }
-
-    loadFormData();
+    loadInitialData();
   }, []);
 
-  // ==========================================
-  // Handle input changes
-  // ==========================================
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  // ==========================================
-  // Submit student
-  // ==========================================
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
+  async function loadInitialData() {
     setLoading(true);
-    setError(null);
-    setSuccess(false);
+    setErrorMsg("");
 
     try {
-      if (!orgId) {
-        throw new Error(
-          "Organization ID نہیں ملی۔ براہ کرم دوبارہ لاگ اِن کریں۔"
-        );
-      }
-
-      if (!formData.name.trim()) {
-        throw new Error(
-          "طالب علم کا نام درج کریں۔"
-        );
-      }
-
-      if (!formData.father_name.trim()) {
-        throw new Error(
-          "والد کا نام درج کریں۔"
-        );
-      }
-
-      if (!formData.admission_date) {
-        throw new Error(
-          "داخلے کی تاریخ منتخب کریں۔"
-        );
-      }
-
-      const monthlyFee = Number(
-        formData.monthly_fee
-      );
-
-      if (
-        Number.isNaN(monthlyFee) ||
-        monthlyFee < 0
-      ) {
-        throw new Error(
-          "ماہانہ فیس درست درج کریں۔"
-        );
-      }
-
-      const studentData = {
-        organization_id: orgId,
-
-        name: formData.name.trim(),
-
-        father_name:
-          formData.father_name.trim(),
-
-        photo_url:
-          formData.photo_url.trim() || null,
-
-        dob:
-          formData.dob || null,
-
-        gender:
-          formData.gender || null,
-
-        admission_date:
-          formData.admission_date,
-
-        program_id:
-          formData.program_id || null,
-
-        batch_id:
-          formData.batch_id || null,
-
-        primary_teacher_id:
-          formData.primary_teacher_id || null,
-
-        monthly_fee: monthlyFee,
-
-        whatsapp:
-          formData.whatsapp.trim() || null,
-
-        phone:
-          formData.phone.trim() || null,
-
-        alternate_phone:
-          formData.alternate_phone.trim() || null,
-
-        address:
-          formData.address.trim() || null,
-
-        notes:
-          formData.notes.trim() || null,
-
-        status:
-          formData.status || "active",
-      };
-
+      // Step 1: Login session verify
       const {
-        error: insertError,
-      } = await supabase
-        .from("students")
-        .insert([studentData]);
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      if (insertError) {
-        throw insertError;
+      if (userError) throw userError;
+      if (!user) throw new Error("User not logged in. Please login again.");
+
+      // Step 2: Organization membership verify
+      const { data: orgMember, error: orgError } = await supabase
+        .from("organization_members")
+        .select("organization_id, user_id, role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (orgError) throw orgError;
+      if (!orgMember) throw new Error("No organization found for this user.");
+
+      const currentOrgId = orgMember.organization_id;
+      setOrgId(currentOrgId);
+
+      // Step 3: Programs load
+      const { data: programsData, error: programsError } = await supabase
+        .from("programs")
+        .select("id, name, active")
+        .eq("organization_id", currentOrgId)
+        .eq("active", true)
+        .order("name");
+
+      if (programsError) throw programsError;
+      setPrograms(programsData || []);
+
+      // Step 4: Batches load
+      const { data: batchesData, error: batchesError } = await supabase
+        .from("batches")
+        .select("id, name, start_time, end_time, active")
+        .eq("organization_id", currentOrgId)
+        .eq("active", true)
+        .order("name");
+
+      if (batchesError) throw batchesError;
+      setBatches(batchesData || []);
+
+      // Step 5: Teachers load (all members of this organization)
+      const { data: membersData, error: membersError } = await supabase
+        .from("organization_members")
+        .select("user_id, role")
+        .eq("organization_id", currentOrgId);
+
+      if (membersError) throw membersError;
+
+      const memberIds = (membersData || []).map((m) => m.user_id);
+
+      let teachersList = [];
+      if (memberIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", memberIds);
+
+        if (profilesError) throw profilesError;
+
+        teachersList = (membersData || []).map((m) => {
+          const profile = (profilesData || []).find((p) => p.id === m.user_id);
+          return {
+            user_id: m.user_id,
+            role: m.role,
+            full_name: profile?.full_name || "Unnamed User",
+          };
+        });
       }
 
-      setSuccess(true);
-
-      setTimeout(() => {
-        router.push(
-          "/dashboard/students"
-        );
-      }, 1200);
+      setTeachers(teachersList);
     } catch (err) {
-      console.error(
-        "Student insert error:",
-        err
-      );
-
-      setError(
-        "طالب علم کا ڈیٹا محفوظ نہیں ہو سکا: " +
-          (err?.message || "Unknown error")
-      );
+      console.error(err);
+      setErrorMsg(err.message || "Something went wrong while loading data.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  // ==========================================
-  // Loading screen
-  // ==========================================
+  function handleChange(e) {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  }
 
-  if (fetchingData) {
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    if (!orgId) {
+      setErrorMsg("Organization not found. Please reload the page.");
+      return;
+    }
+
+    if (!form.name.trim()) {
+      setErrorMsg("Student name is required.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const payload = {
+        organization_id: orgId,
+        name: form.name.trim(),
+        father_name: form.father_name.trim() || null,
+        photo_url: form.photo_url.trim() || null,
+        dob: form.dob || null,
+        admission_date: form.admission_date || null,
+        gender: form.gender || null,
+        program_id: form.program_id || null,
+        batch_id: form.batch_id || null,
+        primary_teacher_id: form.primary_teacher_id || null,
+        monthly_fee: form.monthly_fee ? Number(form.monthly_fee) : null,
+        whatsapp: form.whatsapp.trim() || null,
+        phone: form.phone.trim() || null,
+        alternate_phone: form.alternate_phone.trim() || null,
+        address: form.address.trim() || null,
+        notes: form.notes.trim() || null,
+        status: form.status || "active",
+      };
+
+      const { error: insertError } = await supabase
+        .from("students")
+        .insert([payload]);
+
+      if (insertError) throw insertError;
+
+      setSuccessMsg("Student added successfully!");
+
+      setForm({
+        name: "",
+        father_name: "",
+        photo_url: "",
+        dob: "",
+        admission_date: "",
+        gender: "male",
+        program_id: "",
+        batch_id: "",
+        primary_teacher_id: "",
+        monthly_fee: "",
+        whatsapp: "",
+        phone: "",
+        alternate_phone: "",
+        address: "",
+        notes: "",
+        status: "active",
+      });
+
+      setTimeout(() => {
+        router.push("/dashboard/students");
+      }, 1200);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message || "Failed to save student.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="text-center">
-          <div className="text-lg font-semibold text-gray-700">
-            ڈیٹا لوڈ ہو رہا ہے...
-          </div>
-
-          <div className="text-sm text-gray-500 mt-2">
-            Programs، Batches اور Teachers حاصل کیے جا رہے ہیں
-          </div>
-        </div>
+      <div style={{ padding: 24 }}>
+        <p>Loading...</p>
       </div>
     );
   }
 
-  // ==========================================
-  // Main page
-  // ==========================================
-
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white rounded-lg shadow-sm mt-4">
-
-      <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-3">
-        نیا طالب علم شامل کریں
+    <div style={{ maxWidth: 600, margin: "0 auto", padding: 16 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>
+        Add Student
       </h1>
 
-      {/* ======================================
-          Temporary Diagnostic Information
-          ====================================== */}
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs">
-        <div className="font-semibold text-blue-800 mb-1">
-          System Information
-        </div>
-
-        <div className="text-gray-700 break-all">
-          User ID: {userId || "Not found"}
-        </div>
-
-        <div className="text-gray-700 break-all">
-          Organization ID: {orgId || "Not found"}
-        </div>
-
-        <div className="text-gray-700">
-          Programs: {programs.length}
-        </div>
-
-        <div className="text-gray-700">
-          Batches: {batches.length}
-        </div>
-
-        <div className="text-gray-700">
-          Teachers: {teachers.length}
-        </div>
-      </div>
-
-      {/* Error */}
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded mb-4 text-sm font-medium break-words">
-          {error}
+      {errorMsg && (
+        <div
+          style={{
+            background: "#fee2e2",
+            color: "#991b1b",
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+          }}
+        >
+          {errorMsg}
         </div>
       )}
 
-      {/* Success */}
-
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded mb-4 text-sm font-medium">
-          طالب علم کا ریکارڈ کامیابی سے محفوظ ہو گیا!
+      {successMsg && (
+        <div
+          style={{
+            background: "#dcfce7",
+            color: "#166534",
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+          }}
+        >
+          {successMsg}
         </div>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-6"
-      >
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <h3>Basic Information</h3>
 
-        {/* ======================================
-            Student Information
-            ====================================== */}
+        <label>
+          Student Name *
+          <input name="name" value={form.name} onChange={handleChange} required style={inputStyle} />
+        </label>
 
-        <section className="space-y-4">
+        <label>
+          Father Name
+          <input name="father_name" value={form.father_name} onChange={handleChange} style={inputStyle} />
+        </label>
 
-          <h2 className="text-lg font-semibold text-blue-600">
-            طالب علم کی معلومات
-          </h2>
+        <label>
+          Photo URL
+          <input name="photo_url" value={form.photo_url} onChange={handleChange} style={inputStyle} />
+        </label>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label>
+          Date of Birth
+          <input type="date" name="dob" value={form.dob} onChange={handleChange} style={inputStyle} />
+        </label>
 
-            {/* Name */}
+        <label>
+          Admission Date
+          <input type="date" name="admission_date" value={form.admission_date} onChange={handleChange} style={inputStyle} />
+        </label>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                نام *
-              </label>
+        <label>
+          Gender
+          <select name="gender" value={form.gender} onChange={handleChange} style={inputStyle}>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+        </label>
 
-              <input
-                type="text"
-                name="name"
-                required
-                value={formData.name}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        <h3>Academic</h3>
 
-            {/* Father Name */}
+        <label>
+          Program
+          <select name="program_id" value={form.program_id} onChange={handleChange} style={inputStyle}>
+            <option value="">Select Program</option>
+            {programs.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                والد کا نام *
-              </label>
+        <label>
+          Batch / Timing
+          <select name="batch_id" value={form.batch_id} onChange={handleChange} style={inputStyle}>
+            <option value="">Select Batch</option>
+            {batches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
-              <input
-                type="text"
-                name="father_name"
-                required
-                value={formData.father_name}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        <label>
+          Primary Teacher
+          <select name="primary_teacher_id" value={form.primary_teacher_id} onChange={handleChange} style={inputStyle}>
+            <option value="">Select Teacher</option>
+            {teachers.map((t) => (
+              <option key={t.user_id} value={t.user_id}>
+                {t.full_name} ({t.role})
+              </option>
+            ))}
+          </select>
+        </label>
 
-            {/* Admission Date */}
+        <h3>Fee</h3>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                داخلے کی تاریخ *
-              </label>
+        <label>
+          Monthly Fee
+          <input type="number" name="monthly_fee" value={form.monthly_fee} onChange={handleChange} style={inputStyle} />
+        </label>
 
-              <input
-                type="date"
-                name="admission_date"
-                required
-                value={formData.admission_date}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        <h3>Contact</h3>
 
-            {/* DOB */}
+        <label>
+          WhatsApp
+          <input name="whatsapp" value={form.whatsapp} onChange={handleChange} style={inputStyle} />
+        </label>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                تاریخ پیدائش
-              </label>
+        <label>
+          Phone
+          <input name="phone" value={form.phone} onChange={handleChange} style={inputStyle} />
+        </label>
 
-              <input
-                type="date"
-                name="dob"
-                value={formData.dob}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        <label>
+          Alternate Phone
+          <input name="alternate_phone" value={form.alternate_phone} onChange={handleChange} style={inputStyle} />
+        </label>
 
-            {/* Gender */}
+        <h3>Other</h3>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                جنس
-              </label>
+        <label>
+          Address
+          <textarea name="address" value={form.address} onChange={handleChange} style={inputStyle} />
+        </label>
 
-              <select
-                name="gender"
-                value={formData.gender}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">
-                  منتخب کریں
-                </option>
+        <label>
+          Notes
+          <textarea name="notes" value={form.notes} onChange={handleChange} style={inputStyle} />
+        </label>
 
-                <option value="male">
-                  مرد
-                </option>
+        <label>
+          Status
+          <select name="status" value={form.status} onChange={handleChange} style={inputStyle}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </label>
 
-                <option value="female">
-                  خاتون
-                </option>
-              </select>
-            </div>
+        <button
+          type="submit"
+          disabled={saving}
+          style={{
+            marginTop: 16,
+            padding: "12px 16px",
+            background: "#16a34a",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            fontSize: 16,
+            fontWeight: 600,
+          }}
+        >
+          {saving ? "Saving..." : "Save Student"}
+        </button>
+      </form>
+    </div>
+  );
+}
 
-            {/* Program */}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                پروگرام
-              </label>
-
-              <select
-                name="program_id"
-                value={formData.program_id}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">
-                  منتخب کریں
-                </option>
-
-                {programs.map((program) => (
-                  <option
-                    key={program.id}
-                    value={program.id}
-                  >
-                    {program.name}
-                  </option>
-                ))}
-              </select>
-
-              {programs.length === 0 && (
-                <p className="text-xs text-red-500 mt-1">
-                  کوئی Active Program موجود نہیں۔
-                </p>
-              )}
-            </div>
-
-            {/* Batch */}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Batch
-              </label>
-
-              <select
-                name="batch_id"
-                value={formData.batch_id}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">
-                  منتخب کریں
-                </option>
-
-                {batches.map((batch) => (
-                  <option
-                    key={batch.id}
-                    value={batch.id}
-                  >
-                    {batch.name}
-                  </option>
-                ))}
-              </select>
-
-              {batches.length === 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  ابھی کوئی Active Batch موجود نہیں۔
-                </p>
-              )}
-            </div>
-
-            {/* Primary Teacher */}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                بنیادی استاد
-              </label>
-
-              <select
-                name="primary_teacher_id"
-                value={formData.primary_teacher_id}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">
-                  منتخب کریں
-                </option>
-
-                {teachers.map((teacher) => (
-                  <option
-                    key={teacher.user_id}
-                    value={teacher.user_id}
-                  >
-                    {teacher.full_name}
-                  </option>
-                ))}
-              </select>
-
-              {teachers.length === 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  ابھی کوئی Teacher موجود نہیں۔
-                </p>
-              )}
-            </div>
-
-          </div>
-        </section>
-
-        {/* ======================================
-            Contact and Fee
-            ====================================== */}
-
-        <section className="space-y-4 pt-4 border-t">
-
-          <h2 className="text-lg font-semibold text-blue-600">
-            رابطہ اور فیس کی تفصیلات
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-            {/* WhatsApp */}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                WhatsApp نمبر
-              </label>
-
-              <input
-                type="tel"
-                name="whatsapp"
-                value={formData.whatsapp}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Phone */}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                فون نمبر
-              </label>
-
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Alternate Phone */}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                متبادل نمبر
-              </label>
-
-              <input
-                type="tel"
-                name="alternate_phone"
-                value={formData.alternate_phone}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Monthly Fee */}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                ماہانہ فیس *
-              </label>
-
-              <input
-                type="number"
-                name="monthly_fee"
-                min="0"
-                required
-                value={formData.monthly_fee}
-                onChange={handleChange}
-                className="w-full border p-2 rounded focus:ring-2 foc
+const inputStyle = {
+  width: "100%",
+  padding: 10,
+  marginTop: 4,
+  borderRadius: 8,
+  border: "1px solid #d1d5db",
+  fontSize: 16,
+};
+    
