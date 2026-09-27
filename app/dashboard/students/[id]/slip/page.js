@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { supabase } from "../../../../../utils/supabase";
+import { supabase } from "../../../../utils/supabase";
 
 function monthLabel(billingMonthDate) {
   const d = new Date(billingMonthDate);
