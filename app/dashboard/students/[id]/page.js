@@ -563,7 +563,7 @@ export default function StudentDetailPage() {
             </>
           )}
 
-          {/* PAYMENT HISTORY */}
+ {/* PAYMENT HISTORY */}
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Payment History</h2>
 
           {feeLoading ? (
@@ -597,4 +597,184 @@ export default function StudentDetailPage() {
         <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <label>
             Student Name *
-            <input name="name" value={form.name || ""} onChange={handle
+            <input name="name" value={form.name || ""} onChange={handleChange} required style={inputStyle} />
+          </label>
+
+          <label>
+            Father Name
+            <input name="father_name" value={form.father_name || ""} onChange={handleChange} style={inputStyle} />
+          </label>
+
+          <label>
+            Date of Birth
+            <input type="date" name="dob" value={form.dob || ""} onChange={handleChange} style={inputStyle} />
+          </label>
+
+          <label>
+            Admission Date
+            <input
+              type="date"
+              name="admission_date"
+              value={form.admission_date || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
+          </label>
+
+          <label>
+            Gender
+            <select name="gender" value={form.gender || "male"} onChange={handleChange} style={inputStyle}>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </label>
+
+          <label>
+            Program
+            <select name="program_id" value={form.program_id || ""} onChange={handleChange} style={inputStyle}>
+              <option value="">Select Program</option>
+              {programs.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Batch / Timing
+            <select name="batch_id" value={form.batch_id || ""} onChange={handleChange} style={inputStyle}>
+              <option value="">Select Batch</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Primary Teacher
+            <select
+              name="primary_teacher_id"
+              value={form.primary_teacher_id || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            >
+              <option value="">Select Teacher</option>
+              {teachers.map((t) => (
+                <option key={t.user_id} value={t.user_id}>
+                  {t.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Monthly Fee
+            <input
+              type="number"
+              name="monthly_fee"
+              value={form.monthly_fee || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
+          </label>
+
+          <label>
+            WhatsApp
+            <input name="whatsapp" value={form.whatsapp || ""} onChange={handleChange} style={inputStyle} />
+          </label>
+
+          <label>
+            Phone
+            <input name="phone" value={form.phone || ""} onChange={handleChange} style={inputStyle} />
+          </label>
+
+          <label>
+            Alternate Phone
+            <input
+              name="alternate_phone"
+              value={form.alternate_phone || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
+          </label>
+
+          <label>
+            Address
+            <textarea name="address" value={form.address || ""} onChange={handleChange} style={inputStyle} />
+          </label>
+
+          <label>
+            Notes
+            <textarea name="notes" value={form.notes || ""} onChange={handleChange} style={inputStyle} />
+          </label>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                flex: 1,
+                padding: "12px 16px",
+                background: "#16a34a",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                fontSize: 16,
+                fontWeight: 600,
+              }}
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setEditMode(false)}
+              style={{
+                padding: "12px 16px",
+                background: "#f3f4f6",
+                color: "#374151",
+                border: "1px solid #d1d5db",
+                borderRadius: 8,
+                fontSize: 16,
+                fontWeight: 600,
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        padding: "10px 0",
+        borderBottom: "1px solid #f3f4f6",
+      }}
+    >
+      <span style={{ color: "#6b7280", fontSize: 14 }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 500, textAlign: "right", maxWidth: "60%" }}>
+        {value || "—"}
+      </span>
+    </div>
+  );
+}
+
+const inputStyle = {
+  width: "100%",
+  padding: 10,
+  marginTop: 4,
+  borderRadius: 8,
+  border: "1px solid #d1d5db",
+  fontSize: 16,
+};
+        
