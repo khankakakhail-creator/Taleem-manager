@@ -503,7 +503,7 @@ export default function StudentDetailPage() {
                   flexWrap: "wrap",
                 }}
               >
-                <span>Total Due: Rs {feeTotals.due}</span>
+                <span>Total Monthly Fee: Rs {feeTotals.due}</span>
                 <span>Total Paid: Rs {feeTotals.paid}</span>
                 <span style={{ fontWeight: 700, color: feeTotals.remaining > 0 ? "#dc2626" : "#16a34a" }}>
                   Total Remaining: Rs {feeTotals.remaining > 0 ? feeTotals.remaining : 0}
@@ -529,33 +529,37 @@ export default function StudentDetailPage() {
                     <div
                       key={r.id}
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
                         padding: "10px 12px",
                         background: "white",
                         border: "1px solid #f3f4f6",
                         borderRadius: 8,
                       }}
                     >
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>{monthLabel(r.billing_month)}</div>
-                        <div style={{ fontSize: 12, color: "#6b7280" }}>
-                          Due: Rs {due} · Paid: Rs {paid} · Remaining: Rs {remaining > 0 ? remaining : 0}
-                        </div>
-                      </div>
-                      <span
+                      <div
                         style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          padding: "3px 10px",
-                          borderRadius: 999,
-                          background: color + "22",
-                          color: color,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 4,
                         }}
                       >
-                        {status}
-                      </span>
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>{monthLabel(r.billing_month)}</span>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            padding: "3px 10px",
+                            borderRadius: 999,
+                            background: color + "22",
+                            color: color,
+                          }}
+                        >
+                          {status}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#6b7280" }}>
+                        Monthly Fee: Rs {due} · Paid: Rs {paid} · Remaining: Rs {remaining > 0 ? remaining : 0}
+                      </div>
                     </div>
                   );
                 })}
@@ -563,7 +567,7 @@ export default function StudentDetailPage() {
             </>
           )}
 
- {/* PAYMENT HISTORY */}
+  {/* PAYMENT HISTORY */}
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Payment History</h2>
 
           {feeLoading ? (
