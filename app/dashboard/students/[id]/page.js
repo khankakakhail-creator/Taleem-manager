@@ -264,7 +264,22 @@ export default function StudentDetailPage() {
         }}
       >
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>{form.name}</h1>
-
+<Link
+          href={`/dashboard/students/${studentId}/slip`}
+          style={{
+            padding: "8px 14px",
+            background: "#f3f4f6",
+            color: "#374151",
+            border: "1px solid #d1d5db",
+            borderRadius: 8,
+            fontSize: 14,
+            fontWeight: 600,
+            textDecoration: "none",
+            alignSelf: "center",
+          }}
+        >
+          📄 Fee Slip
+        </Link>
         <div style={{ display: "flex", gap: 8 }}>
           {!editMode && (
             <button
