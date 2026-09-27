@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../utils/supabase";
+import { supabase } from "../../../utils/supabase";
 
 function todayDateString() {
   const d = new Date();
@@ -28,6 +28,7 @@ export default function AttendancePage() {
   const [userId, setUserId] = useState(null);
   const [students, setStudents] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({});
+  const [notesMap, setNotesMap] = useState({});
 
   const [selectedDate, setSelectedDate] = useState(todayDateString());
 
@@ -97,11 +98,14 @@ export default function AttendancePage() {
 
       if (attendanceError) throw attendanceError;
 
-      const map = {};
+      const statusMap = {};
+      const noteMap = {};
       (attendanceData || []).forEach((a) => {
-        map[a.student_id] = a.status;
+        statusMap[a.student_id] = a.status;
+        noteMap[a.student_id] = a.notes || "";
       });
-      setAttendanceMap(map);
+      setAttendanceMap(statusMap);
+      setNotesMap(noteMap);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || "Failed to load attendance.");
@@ -110,6 +114,10 @@ export default function AttendancePage() {
 
   function setStatus(studentId, status) {
     setAttendanceMap((prev) => ({ ...prev, [studentId]: status }));
+  }
+
+  function setNote(studentId, note) {
+    setNotesMap((prev) => ({ ...prev, [studentId]: note }));
   }
 
   async function handleSaveAll() {
@@ -125,6 +133,7 @@ export default function AttendancePage() {
           student_id: studentId,
           attendance_date: selectedDate,
           status,
+          notes: notesMap[studentId]?.trim() || null,
           marked_by_user_id: userId,
         }));
 
@@ -216,7 +225,7 @@ export default function AttendancePage() {
                   ) : null}
                 </div>
 
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                   {STATUS_OPTIONS.map((opt) => {
                     const isSelected = attendanceMap[s.id] === opt.value;
                     return (
@@ -238,6 +247,22 @@ export default function AttendancePage() {
                     );
                   })}
                 </div>
+
+                {attendanceMap[s.id] && (
+                  <input
+                    type="text"
+                    placeholder="Optional note (e.g. reason for leave)"
+                    value={notesMap[s.id] || ""}
+                    onChange={(e) => setNote(s.id, e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: 8,
+                      borderRadius: 6,
+                      border: "1px solid #e5e7eb",
+                      fontSize: 13,
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -262,4 +287,4 @@ export default function AttendancePage() {
       )}
     </div>
   );
-}
+                    }
