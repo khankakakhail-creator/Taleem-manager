@@ -162,7 +162,12 @@ export default function StudentsListPage() {
               }}
             >
               <div>
-                <div style={{ fontWeight: 600, fontSize: 16 }}>{s.name}</div>
+                <Link
+                  href={`/dashboard/students/${s.id}`}
+                  style={{ fontWeight: 600, fontSize: 16, color: "#111827", textDecoration: "none" }}
+                >
+                  {s.name}
+                </Link>
                 <div style={{ fontSize: 13, color: "#6b7280" }}>
                   {s.father_name ? `S/O ${s.father_name}` : ""}
                 </div>
@@ -214,4 +219,4 @@ export default function StudentsListPage() {
       )}
     </div>
   );
-}
+                      }
