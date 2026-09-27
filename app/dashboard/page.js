@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../utils/supabase";
+import { supabase } from "../utils/supabase";
 
 function todayDateString() {
   return new Date().toISOString().slice(0, 10);
