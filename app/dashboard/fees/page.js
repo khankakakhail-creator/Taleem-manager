@@ -1,5 +1,5 @@
 "use client";
-
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabase";
 
@@ -229,7 +229,20 @@ export default function FeesPage() {
 
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", padding: 16 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Fees</h1>
+     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+  <h1 style={{ fontSize: 22, fontWeight: 700 }}>Fees</h1>
+  <Link
+    href="/dashboard/fees/report"
+    style={{
+      fontSize: 13,
+      color: "#2563eb",
+      textDecoration: "none",
+      fontWeight: 600,
+    }}
+  >
+    📄 Monthly Report
+  </Link>
+</div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "flex-end" }}>
         <label style={{ flex: 1 }}>
