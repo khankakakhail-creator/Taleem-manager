@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../../../../utils/supabase";
+import { supabase } from "../../../utils/supabase";
 
 const STATUS_LABELS = {
   present: "Present",
