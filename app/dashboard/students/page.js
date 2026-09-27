@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../../utils/supabase";
+import { supabase } from "../../utils/supabase";
 
 export default function StudentsListPage() {
   const [loading, setLoading] = useState(true);
