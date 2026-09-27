@@ -242,6 +242,12 @@ export default function FeesPage() {
   >
     📄 Monthly Report
   </Link>
+      <Link
+  href="/dashboard/fees/payments"
+  style={{ fontSize: 13, color: "#2563eb", textDecoration: "none", fontWeight: 600 }}
+>
+  💰 Payments History
+</Link>
 </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "flex-end" }}>
