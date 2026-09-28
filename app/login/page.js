@@ -29,7 +29,7 @@ export default function LoginPage() {
         throw new Error("Login succeeded but no session was created.");
       }
 
-      router.push("/dashboard/students/add");
+      router.push("/dashboard/");
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || "Login failed. Please check your email and password.");
