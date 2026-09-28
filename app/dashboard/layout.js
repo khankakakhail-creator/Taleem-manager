@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/students", label: "Students", icon: "🎓" },
   { href: "/dashboard/attendance", label: "Attendance", icon: "✅" },
   { href: "/dashboard/fees", label: "Fees", icon: "💰" },
-  { href: "/dashboard/batches", label: "More", icon: "⋯" },
+  { href: "/dashboard/more", label: "More", icon: "⋯" },
 ];
 
 export default function DashboardLayout({ children }) {
