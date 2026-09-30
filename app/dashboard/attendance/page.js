@@ -4,36 +4,20 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabase";
 import { useRole } from "../../utils/role-context";
 
-function todayDateString() {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+function getToday() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
 
 const STATUS_OPTIONS = [
-  {
-    value: "present",
-    label: "Present",
-    color: "#16a34a",
-  },
-  {
-    value: "absent",
-    label: "Absent",
-    color: "#dc2626",
-  },
-  {
-    value: "leave",
-    label: "Leave",
-    color: "#d97706",
-  },
-  {
-    value: "late",
-    label: "Late",
-    color: "#2563eb",
-  },
+  { value: "present", label: "Present" },
+  { value: "absent", label: "Absent" },
+  { value: "leave", label: "Leave" },
+  { value: "late", label: "Late" },
 ];
 
 const REASON_OPTIONS = [
@@ -60,566 +44,524 @@ const LATE_OPTIONS = [
 export default function AttendancePage() {
   const { orgId, userId } = useRole();
 
+  const [students, setStudents] = useState([]);
+  const [attendance, setAttendance] = useState({});
+  const [notes, setNotes] = useState({});
+  const [reasons, setReasons] = useState({});
+  const [customReasons, setCustomReasons] = useState({});
+  const [lateTimes, setLateTimes] = useState({});
+  const [customLateTimes, setCustomLateTimes] = useState({});
+
+  const [selectedDate, setSelectedDate] = useState(getToday());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [errorMsg, setErrorMsg] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
-
-  const [students, setStudents] = useState([]);
-
-  const [attendanceMap, setAttendanceMap] = useState({});
-  const [notesMap, setNotesMap] = useState({});
-
-  const [reasonMap, setReasonMap] = useState({});
-  const [customReasonMap, setCustomReasonMap] = useState({});
-
-  const [lateMap, setLateMap] = useState({});
-  const [customLateMap, setCustomLateMap] = useState({});
-
-  const [selectedDate, setSelectedDate] = useState(
-    todayDateString()
-  );
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
-    if (!orgId || !userId) return;
+    if (!orgId || !userId) {
+      return;
+    }
 
-    loadInitialData();
+    loadStudents();
   }, [orgId, userId]);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      return;
+    }
 
-    loadAttendanceForDate(selectedDate);
-  }, [selectedDate, orgId]);
+    loadAttendance();
+  }, [orgId, selectedDate]);
 
-  async function loadInitialData() {
+  async function loadStudents() {
     setLoading(true);
-    setErrorMsg("");
+    setErrorMessage("");
 
-    try {
-      if (!orgId || !userId) {
-        throw new Error("No active organization found.");
+    const { data, error } = await supabase
+      .from("students")
+      .select("id, name, father_name")
+      .eq("organization_id", orgId)
+      .eq("status", "active")
+      .order("name");
+
+    if (error) {
+      console.error(error);
+      setErrorMessage(error.message);
+      setStudents([]);
+    } else {
+      setStudents(data || []);
+    }
+
+    setLoading(false);
+  }
+
+  async function loadAttendance() {
+    setErrorMessage("");
+
+    const { data, error } = await supabase
+      .from("attendance")
+      .select("student_id, status, notes")
+      .eq("organization_id", orgId)
+      .eq("attendance_date", selectedDate);
+
+    if (error) {
+      console.error(error);
+      setErrorMessage(error.message);
+      return;
+    }
+
+    const newAttendance = {};
+    const newNotes = {};
+    const newReasons = {};
+    const newCustomReasons = {};
+    const newLateTimes = {};
+    const newCustomLateTimes = {};
+
+    (data || []).forEach((record) => {
+      const studentId = record.student_id;
+      const note = record.notes || "";
+
+      newAttendance[studentId] = record.status;
+      newNotes[studentId] = "";
+
+      if (
+        record.status === "absent" ||
+        record.status === "leave"
+      ) {
+        if (note.startsWith("Reason: ")) {
+          const text = note
+            .replace("Reason: ", "")
+            .split(" | Note: ")[0];
+
+          const isKnownReason = REASON_OPTIONS.some(
+            (item) =>
+              item.value === text &&
+              item.value !== "custom"
+          );
+
+          if (isKnownReason) {
+            newReasons[studentId] = text;
+          } else {
+            newReasons[studentId] = "custom";
+            newCustomReasons[studentId] = text;
+          }
+
+          if (note.includes(" | Note: ")) {
+            newNotes[studentId] =
+              note.split(" | Note: ")[1];
+          }
+        }
       }
 
-      const { data, error } = await supabase
-        .from("students")
-        .select("id, name, father_name")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .order("name");
+      if (record.status === "late") {
+        if (note.startsWith("Late: ")) {
+          const text = note
+            .replace("Late: ", "")
+            .split(" | Note: ")[0];
 
-      if (error) throw error;
+          const isKnownLate = LATE_OPTIONS.some(
+            (item) =>
+              item.value === text &&
+              item.value !== "custom"
+          );
 
-      setStudents(data || []);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(
-        err.message || "Failed to load students."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+          if (isKnownLate) {
+            newLateTimes[studentId] = text;
+          } else {
+            newLateTimes[studentId] = "custom";
+            newCustomLateTimes[studentId] = text;
+          }
 
-  async function loadAttendanceForDate(date) {
-    setErrorMsg("");
-
-    try {
-      const { data, error } = await supabase
-        .from("attendance")
-        .select("student_id, status, notes")
-        .eq("organization_id", orgId)
-        .eq("attendance_date", date);
-
-      if (error) throw error;
-
-      const statusMap = {};
-      const noteMap = {};
-      const reasons = {};
-      const customReasons = {};
-      const lates = {};
-      const customLates = {};
-
-      (data || []).forEach((record) => {
-        const studentId = record.student_id;
-        const note = record.notes || "";
-
-        statusMap[studentId] = record.status;
-        noteMap[studentId] = "";
-
-        if (
-          record.status === "absent" ||
-          record.status === "leave"
-        ) {
-          if (note.startsWith("Reason: ")) {
-            const reasonText = note
-              .replace("Reason: ", "")
-              .split(" | Note: ")[0];
-
-            const knownReason = REASON_OPTIONS.some(
-              (option) =>
-                option.value === reasonText &&
-                option.value !== "custom"
-            );
-
-            if (knownReason) {
-              reasons[studentId] = reasonText;
-            } else {
-              reasons[studentId] = "custom";
-              customReasons[studentId] = reasonText;
-            }
-
-            const extraNote = note.includes(" | Note: ")
-              ? note.split(" | Note: ")[1]
-              : "";
-
-            noteMap[studentId] = extraNote;
+          if (note.includes(" | Note: ")) {
+            newNotes[studentId] =
+              note.split(" | Note: ")[1];
           }
         }
+      }
 
-        if (record.status === "late") {
-          if (note.startsWith("Late: ")) {
-            const lateText = note
-              .replace("Late: ", "")
-              .split(" | Note: ")[0];
+      if (record.status === "present") {
+        newNotes[studentId] = note;
+      }
+    });
 
-            const knownLate = LATE_OPTIONS.some(
-              (option) =>
-                option.value === lateText &&
-                option.value !== "custom"
-            );
-
-            if (knownLate) {
-              lates[studentId] = lateText;
-            } else {
-              lates[studentId] = "custom";
-              customLates[studentId] = lateText;
-            }
-
-            const extraNote = note.includes(" | Note: ")
-              ? note.split(" | Note: ")[1]
-              : "";
-
-            noteMap[studentId] = extraNote;
-          }
-        }
-
-        if (record.status === "present") {
-          noteMap[studentId] = note;
-        }
-      });
-
-      setAttendanceMap(statusMap);
-      setNotesMap(noteMap);
-      setReasonMap(reasons);
-      setCustomReasonMap(customReasons);
-      setLateMap(lates);
-      setCustomLateMap(customLates);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(
-        err.message || "Failed to load attendance."
-      );
-    }
+    setAttendance(newAttendance);
+    setNotes(newNotes);
+    setReasons(newReasons);
+    setCustomReasons(newCustomReasons);
+    setLateTimes(newLateTimes);
+    setCustomLateTimes(newCustomLateTimes);
   }
 
-  function setStatus(studentId, status) {
-    setAttendanceMap((prev) => ({
-      ...prev,
+  function changeStatus(studentId, status) {
+    setAttendance((previous) => ({
+      ...previous,
       [studentId]: status,
     }));
 
     if (status !== "absent" && status !== "leave") {
-      setReasonMap((prev) => ({
-        ...prev,
+      setReasons((previous) => ({
+        ...previous,
+        [studentId]: "",
+      }));
+
+      setCustomReasons((previous) => ({
+        ...previous,
         [studentId]: "",
       }));
     }
 
     if (status !== "late") {
-      setLateMap((prev) => ({
-        ...prev,
+      setLateTimes((previous) => ({
+        ...previous,
+        [studentId]: "",
+      }));
+
+      setCustomLateTimes((previous) => ({
+        ...previous,
         [studentId]: "",
       }));
     }
   }
 
-  function setNote(studentId, note) {
-    setNotesMap((prev) => ({
-      ...prev,
-      [studentId]: note,
-    }));
-  }
+  function getNote(studentId, status) {
+    const extraNote = (notes[studentId] || "").trim();
 
-  function buildNote(studentId, status) {
-    const extraNote =
-      notesMap[studentId]?.trim() || "";
-
-    if (
-      status === "absent" ||
-      status === "leave"
-    ) {
-      const selectedReason =
-        reasonMap[studentId];
+    if (status === "absent" || status === "leave") {
+      const selectedReason = reasons[studentId];
 
       if (!selectedReason) {
-        return "";
+        return null;
       }
 
-      const reasonText =
+      const reason =
         selectedReason === "custom"
-          ? customReasonMap[studentId]?.trim()
+          ? (customReasons[studentId] || "").trim()
           : selectedReason;
 
-      if (!reasonText) {
-        return "";
+      if (!reason) {
+        return null;
       }
 
-      return `Reason: ${reasonText}${
-        extraNote
-          ? ` | Note: ${extraNote}`
-          : ""
-      }`;
+      if (extraNote) {
+        return `Reason: ${reason} | Note: ${extraNote}`;
+      }
+
+      return `Reason: ${reason}`;
     }
 
     if (status === "late") {
-      const selectedLate =
-        lateMap[studentId];
+      const selectedLate = lateTimes[studentId];
 
       if (!selectedLate) {
-        return "";
+        return null;
       }
 
-      const lateText =
+      const lateTime =
         selectedLate === "custom"
-          ? customLateMap[studentId]?.trim()
+          ? (customLateTimes[studentId] || "").trim()
           : selectedLate;
 
-      if (!lateText) {
-        return "";
+      if (!lateTime) {
+        return null;
       }
 
-      return `Late: ${lateText}${
-        extraNote
-          ? ` | Note: ${extraNote}`
-          : ""
-      }`;
+      if (extraNote) {
+        return `Late: ${lateTime} | Note: ${extraNote}`;
+      }
+
+      return `Late: ${lateTime}`;
     }
 
-    return extraNote;
+    return extraNote || null;
   }
 
-  async function handleSaveAll() {
+  async function saveAttendance() {
     setSaving(true);
-    setErrorMsg("");
-    setSuccessMsg("");
+    setErrorMessage("");
+    setSuccessMessage("");
 
     try {
       if (!orgId || !userId) {
+        throw new Error("Organization not found.");
+      }
+
+      const selectedStudents = Object.entries(attendance);
+
+      if (selectedStudents.length === 0) {
         throw new Error(
-          "No active organization found."
+          "Please mark attendance for at least one student."
         );
       }
 
-      const rows = Object.entries(attendanceMap)
-        .filter(([, status]) => status)
-        .map(([studentId, status]) => ({
+      const rows = [];
+
+      for (const [studentId, status] of selectedStudents) {
+        const note = getNote(studentId, status);
+
+        if (
+          (status === "absent" || status === "leave") &&
+          !note
+        ) {
+          throw new Error(
+            "Please select a reason for every Absent/Leave student."
+          );
+        }
+
+        if (status === "late" && !note) {
+          throw new Error(
+            "Please select the late duration for every Late student."
+          );
+        }
+
+        rows.push({
           organization_id: orgId,
           student_id: studentId,
           attendance_date: selectedDate,
-          status,
-          notes:
-            buildNote(studentId, status) ||
-            null,
+          status: status,
+          notes: note,
           marked_by_user_id: userId,
-        }));
-
-      if (rows.length === 0) {
-        setErrorMsg(
-          "Please mark attendance for at least one student."
-        );
-        return;
-      }
-
-      for (const row of rows) {
-        if (
-          (row.status === "absent" ||
-            row.status === "leave") &&
-          !row.notes?.startsWith("Reason:")
-        ) {
-          setErrorMsg(
-            "Please select a reason for every Absent/Leave student."
-          );
-          return;
-        }
-
-        if (
-          row.status === "late" &&
-          !row.notes?.startsWith("Late:")
-        ) {
-          setErrorMsg(
-            "Please select the late duration for every Late student."
-          );
-          return;
-        }
+        });
       }
 
       const { error } = await supabase
         .from("attendance")
         .upsert(rows, {
-          onConflict:
-            "student_id,attendance_date",
+          onConflict: "student_id,attendance_date",
         });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      setSuccessMsg(
-        "Attendance saved successfully!"
+      setSuccessMessage(
+        "Attendance saved successfully."
       );
 
-      await loadAttendanceForDate(
-        selectedDate
-      );
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(
-        err.message ||
-          "Failed to save attendance."
+      await loadAttendance();
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(
+        error.message || "Failed to save attendance."
       );
     } finally {
       setSaving(false);
     }
   }
 
-  const markedCount =
-    Object.values(attendanceMap).filter(Boolean)
-      .length;
+  const markedCount = Object.values(attendance).filter(
+    Boolean
+  ).length;
 
   return (
     <div
       style={{
-        maxWidth: 600,
+        maxWidth: "650px",
         margin: "0 auto",
-        padding: 16,
+        padding: "16px",
       }}
     >
       <h1
         style={{
-          fontSize: 22,
-          fontWeight: 700,
-          marginBottom: 16,
+          fontSize: "24px",
+          fontWeight: "700",
+          marginBottom: "16px",
         }}
       >
         Attendance
       </h1>
 
-      <div style={{ marginBottom: 16 }}>
-        <label>
-          <div
-            style={{
-              fontSize: 14,
-              marginBottom: 4,
-            }}
-          >
-            Date
-          </div>
-
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) =>
-              setSelectedDate(
-                e.target.value
-              )
-            }
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 8,
-              border:
-                "1px solid #d1d5db",
-              fontSize: 16,
-            }}
-          />
+      <div
+        style={{
+          background: "#ffffff",
+          border: "1px solid #e5e7eb",
+          borderRadius: "12px",
+          padding: "14px",
+          marginBottom: "16px",
+        }}
+      >
+        <label
+          style={{
+            display: "block",
+            fontSize: "14px",
+            fontWeight: "600",
+            marginBottom: "6px",
+          }}
+        >
+          Date
         </label>
+
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(event) =>
+            setSelectedDate(event.target.value)
+          }
+          style={{
+            width: "100%",
+            padding: "10px",
+            border: "1px solid #d1d5db",
+            borderRadius: "8px",
+            fontSize: "16px",
+          }}
+        />
       </div>
 
-      {errorMsg && (
+      {errorMessage && (
         <div
           style={{
             background: "#fee2e2",
             color: "#991b1b",
-            padding: 12,
-            borderRadius: 8,
-            marginBottom: 16,
+            padding: "12px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            direction: "rtl",
           }}
         >
-          {errorMsg}
+          {errorMessage}
         </div>
       )}
 
-      {successMsg && (
+      {successMessage && (
         <div
           style={{
             background: "#dcfce7",
             color: "#166534",
-            padding: 12,
-            borderRadius: 8,
-            marginBottom: 16,
+            padding: "12px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            direction: "rtl",
           }}
         >
-          {successMsg}
+          {successMessage}
         </div>
       )}
 
       {loading ? (
         <p>Loading students...</p>
       ) : students.length === 0 ? (
-        <p
+        <div
           style={{
+            padding: "20px",
+            textAlign: "center",
             color: "#6b7280",
           }}
         >
           No active students found.
-        </p>
+        </div>
       ) : (
         <>
-          <p
+          <div
             style={{
-              fontSize: 13,
+              fontSize: "13px",
               color: "#6b7280",
-              marginBottom: 12,
+              marginBottom: "10px",
             }}
           >
-            {markedCount} of{" "}
-            {students.length} marked
-          </p>
+            {markedCount} of {students.length} marked
+          </div>
 
           <div
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: 10,
-              marginBottom: 20,
+              gap: "12px",
             }}
           >
             {students.map((student) => {
-              const status =
-                attendanceMap[
-                  student.id
-                ];
+              const status = attendance[student.id];
 
               return (
                 <div
                   key={student.id}
                   style={{
-                    background: "white",
-                    border:
-                      "1px solid #e5e7eb",
-                    borderRadius: 10,
-                    padding: 12,
+                    background: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    padding: "14px",
                   }}
                 >
                   <div
                     style={{
-                      fontWeight: 600,
-                      fontSize: 15,
-                      marginBottom: 8,
+                      fontSize: "16px",
+                      fontWeight: "700",
+                      marginBottom: "4px",
                     }}
                   >
                     {student.name}
-
-                    {student.father_name && (
-                      <span
-                        style={{
-                          fontWeight: 400,
-                          color: "#6b7280",
-                          fontSize: 13,
-                        }}
-                      >
-                        {" "}
-                        · S/O{" "}
-                        {student.father_name}
-                      </span>
-                    )}
                   </div>
+
+                  {student.father_name && (
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#6b7280",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      S/O {student.father_name}
+                    </div>
+                  )}
 
                   <div
                     style={{
                       display: "flex",
-                      gap: 6,
+                      gap: "6px",
                       flexWrap: "wrap",
                     }}
                   >
-                    {STATUS_OPTIONS.map(
-                      (option) => {
-                        const selected =
-                          status ===
-                          option.value;
+                    {STATUS_OPTIONS.map((option) => {
+                      const selected =
+                        status === option.value;
 
-                        return (
-                          <button
-                            key={
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            changeStatus(
+                              student.id,
                               option.value
-                            }
-                            type="button"
-                            onClick={() =>
-                              setStatus(
-                                student.id,
-                                option.value
-                              )
-                            }
-                            style={{
-                              padding:
-                                "8px 12px",
-                              borderRadius: 8,
-                              border: `1px solid ${
-                                selected
-                                  ? option.color
-                                  : "#d1d5db"
-                              }`,
-                              background:
-                                selected
-                                  ? option.color
-                                  : "white",
-                              color:
-                                selected
-                                  ? "white"
-                                  : "#374151",
-                              fontSize: 13,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {
-                              option.label
-                            }
-                          </button>
-                        );
-                      }
-                    )}
+                            )
+                          }
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            border: selected
+                              ? "1px solid #2563eb"
+                              : "1px solid #d1d5db",
+                            background: selected
+                              ? "#2563eb"
+                              : "#ffffff",
+                            color: selected
+                              ? "#ffffff"
+                              : "#374151",
+                            fontWeight: "600",
+                            fontSize: "13px",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  {(status ===
-                    "absent" ||
-                    status ===
-                      "leave") && (
+                  {(status === "absent" ||
+                    status === "leave") && (
                     <div
                       style={{
-                        marginTop: 10,
-                        padding: 10,
-                        background:
-                          "#f9fafb",
-                        borderRadius: 8,
-                        direction:
-                          "rtl",
+                        marginTop: "12px",
+                        padding: "12px",
+                        background: "#f9fafb",
+                        borderRadius: "10px",
+                        direction: "rtl",
                       }}
                     >
                       <div
                         style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          marginBottom: 8,
+                          fontWeight: "700",
+                          fontSize: "14px",
+                          marginBottom: "8px",
                         }}
                       >
                         وجہ منتخب کریں
@@ -628,95 +570,74 @@ export default function AttendancePage() {
                       <div
                         style={{
                           display: "flex",
-                          gap: 6,
-                          flexWrap:
-                            "wrap",
+                          gap: "6px",
+                          flexWrap: "wrap",
                         }}
                       >
-                        {REASON_OPTIONS.map(
-                          (option) => {
-                            const selected =
-                              reasonMap[
-                                student.id
-                              ] ===
-                              option.value;
+                        {REASON_OPTIONS.map((option) => {
+                          const selected =
+                            reasons[student.id] ===
+                            option.value;
 
-                            return (
-                              <button
-                                key={
-                                  option.value
-                                }
-                                type="button"
-                                onClick={() =>
-                                  setReasonMap(
-                                    (prev) => ({
-                                      ...prev,
-                                      [student.id]:
-                                        option.value,
-                                    })
-                                  )
-                                }
-                                style={{
-                                  padding:
-                                    "7px 10px",
-                                  borderRadius:
-                                    7,
-                                  border: `1px solid ${
-                                    selected
-                                      ? "#2563eb"
-                                      : "#d1d5db"
-                                  }`,
-                                  background:
-                                    selected
-                                      ? "#2563eb"
-                                      : "white",
-                                  color:
-                                    selected
-                                      ? "white"
-                                      : "#374151",
-                                  fontSize: 12,
-                                }}
-                              >
-                                {
-                                  option.label
-                                }
-                              </button>
-                            );
-                          }
-                        )}
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() =>
+                                setReasons((previous) => ({
+                                  ...previous,
+                                  [student.id]:
+                                    option.value,
+                                }))
+                              }
+                              style={{
+                                padding: "7px 10px",
+                                borderRadius: "7px",
+                                border: selected
+                                  ? "1px solid #2563eb"
+                                  : "1px solid #d1d5db",
+                                background: selected
+                                  ? "#2563eb"
+                                  : "#ffffff",
+                                color: selected
+                                  ? "#ffffff"
+                                  : "#374151",
+                                fontSize: "12px",
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
                       </div>
 
-                      {reasonMap[
-                        student.id
-                      ] === "custom" && (
+                      {reasons[student.id] ===
+                        "custom" && (
                         <input
                           type="text"
-                          placeholder="اپنی وجہ لکھیں"
                           value={
-                            customReasonMap[
-                              student.id
-                            ] || ""
+                            customReasons[student.id] ||
+                            ""
                           }
-                          onChange={(e) =>
-                            setCustomReasonMap(
-                              (prev) => ({
-                                ...prev,
+                          onChange={(event) =>
+                            setCustomReasons(
+                              (previous) => ({
+                                ...previous,
                                 [student.id]:
-                                  e.target
-                                    .value,
+                                  event.target.value,
                               })
                             )
                           }
+                          placeholder="اپنی وجہ لکھیں"
                           style={{
                             width: "100%",
-                            marginTop: 8,
-                            padding: 9,
-                            borderRadius: 7,
+                            marginTop: "8px",
+                            padding: "9px",
+                            borderRadius: "7px",
                             border:
                               "1px solid #d1d5db",
-                            fontSize: 13,
-                            direction:
-                              "rtl",
+                            fontSize: "13px",
+                            direction: "rtl",
                           }}
                         />
                       )}
@@ -726,20 +647,18 @@ export default function AttendancePage() {
                   {status === "late" && (
                     <div
                       style={{
-                        marginTop: 10,
-                        padding: 10,
-                        background:
-                          "#f9fafb",
-                        borderRadius: 8,
-                        direction:
-                          "rtl",
+                        marginTop: "12px",
+                        padding: "12px",
+                        background: "#f9fafb",
+                        borderRadius: "10px",
+                        direction: "rtl",
                       }}
                     >
                       <div
                         style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          marginBottom: 8,
+                          fontWeight: "700",
+                          fontSize: "14px",
+                          marginBottom: "8px",
                         }}
                       >
                         کتنی دیر سے آیا؟
@@ -748,5 +667,47 @@ export default function AttendancePage() {
                       <div
                         style={{
                           display: "flex",
-                          gap: 6,
-                          flexWrap
+                          gap: "6px",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {LATE_OPTIONS.map((option) => {
+                          const selected =
+                            lateTimes[student.id] ===
+                            option.value;
+
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() =>
+                                setLateTimes(
+                                  (previous) => ({
+                                    ...previous,
+                                    [student.id]:
+                                      option.value,
+                                  })
+                                )
+                              }
+                              style={{
+                                padding: "7px 10px",
+                                borderRadius: "7px",
+                                border: selected
+                                  ? "1px solid #2563eb"
+                                  : "1px solid #d1d5db",
+                                background: selected
+                                  ? "#2563eb"
+                                  : "#ffffff",
+                                color: selected
+                                  ? "#ffffff"
+                                  : "#374151",
+                                fontSize: "12px",
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+  
