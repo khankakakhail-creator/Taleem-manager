@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../utils/supabase";
 
@@ -21,12 +21,14 @@ const STATUS_COLORS = {
 
 function monthLabel(billingMonthDate) {
   const d = new Date(billingMonthDate);
-  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 export default function StudentDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const studentId = params.id;
 
   const [loading, setLoading] = useState(true);
@@ -34,6 +36,8 @@ export default function StudentDetailPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [editMode, setEditMode] = useState(false);
+
+  const [role, setRole] = useState(null);
 
   const [programs, setPrograms] = useState([]);
   const [batches, setBatches] = useState([]);
@@ -47,6 +51,8 @@ export default function StudentDetailPage() {
   const [feeRecords, setFeeRecords] = useState([]);
   const [payments, setPayments] = useState([]);
   const [feeLoading, setFeeLoading] = useState(true);
+
+  const isTeacher = role === "teacher";
 
   useEffect(() => {
     loadData();
@@ -69,14 +75,19 @@ export default function StudentDetailPage() {
 
       const { data: orgMember, error: orgError } = await supabase
         .from("organization_members")
-        .select("organization_id")
+        .select("organization_id, role")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (orgError) throw orgError;
-      if (!orgMember) throw new Error("No organization found for this user.");
+      if (!orgMember) {
+        throw new Error("No organization found for this user.");
+      }
 
       const currentOrgId = orgMember.organization_id;
+      const currentRole = orgMember.role;
+
+      setRole(currentRole);
 
       const { data: studentData, error: studentError } = await supabase
         .from("students")
@@ -96,14 +107,16 @@ export default function StudentDetailPage() {
         .eq("organization_id", currentOrgId)
         .eq("active", true)
         .order("name");
+
       setPrograms(programsData || []);
 
       const { data: batchesData } = await supabase
         .from("batches")
-        .select("id, name")
+        .select("id, name, start_time, end_time")
         .eq("organization_id", currentOrgId)
         .eq("active", true)
         .order("name");
+
       setBatches(batchesData || []);
 
       const { data: membersData } = await supabase
@@ -112,21 +125,29 @@ export default function StudentDetailPage() {
         .eq("organization_id", currentOrgId);
 
       const memberIds = (membersData || []).map((m) => m.user_id);
+
       let teachersList = [];
+
       if (memberIds.length > 0) {
         const { data: profilesData } = await supabase
           .from("profiles")
           .select("id, full_name")
           .in("id", memberIds);
 
-        teachersList = (membersData || []).map((m) => {
-          const profile = (profilesData || []).find((p) => p.id === m.user_id);
-          return {
-            user_id: m.user_id,
-            full_name: profile?.full_name || "Unnamed User",
-          };
-        });
+        teachersList = (membersData || [])
+          .filter((m) => m.role === "teacher")
+          .map((m) => {
+            const profile = (profilesData || []).find(
+              (p) => p.id === m.user_id
+            );
+
+            return {
+              user_id: m.user_id,
+              full_name: profile?.full_name || "Unnamed Teacher",
+            };
+          });
       }
+
       setTeachers(teachersList);
     } catch (err) {
       console.error(err);
@@ -160,6 +181,24 @@ export default function StudentDetailPage() {
     setFeeLoading(true);
 
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      const { data: member } = await supabase
+        .from("organization_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (member?.role === "teacher") {
+        setFeeRecords([]);
+        setPayments([]);
+        return;
+      }
+
       const { data: feeData, error: feeError } = await supabase
         .from("fee_records")
         .select("id, billing_month, amount_due, amount_paid")
@@ -167,6 +206,7 @@ export default function StudentDetailPage() {
         .order("billing_month", { ascending: false });
 
       if (feeError) throw feeError;
+
       setFeeRecords(feeData || []);
 
       const { data: paymentData, error: paymentError } = await supabase
@@ -176,6 +216,7 @@ export default function StudentDetailPage() {
         .order("payment_date", { ascending: false });
 
       if (paymentError) throw paymentError;
+
       setPayments(paymentData || []);
     } catch (err) {
       console.error(err);
@@ -186,11 +227,21 @@ export default function StudentDetailPage() {
 
   function handleChange(e) {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   }
 
   async function handleSave(e) {
     e.preventDefault();
+
+    if (isTeacher) {
+      setErrorMsg("Teachers cannot edit student profiles.");
+      return;
+    }
+
     setErrorMsg("");
     setSuccessMsg("");
     setSaving(true);
@@ -206,7 +257,9 @@ export default function StudentDetailPage() {
         program_id: form.program_id || null,
         batch_id: form.batch_id || null,
         primary_teacher_id: form.primary_teacher_id || null,
-        monthly_fee: form.monthly_fee ? Number(form.monthly_fee) : null,
+        monthly_fee: form.monthly_fee
+          ? Number(form.monthly_fee)
+          : null,
         whatsapp: form.whatsapp?.trim() || null,
         phone: form.phone?.trim() || null,
         alternate_phone: form.alternate_phone?.trim() || null,
@@ -233,7 +286,14 @@ export default function StudentDetailPage() {
   }
 
   async function handleToggleStatus() {
-    const newStatus = form.status === "active" ? "inactive" : "active";
+    if (isTeacher) {
+      setErrorMsg("Teachers cannot change student status.");
+      return;
+    }
+
+    const newStatus =
+      form.status === "active" ? "inactive" : "active";
+
     setSaving(true);
     setErrorMsg("");
 
@@ -245,7 +305,11 @@ export default function StudentDetailPage() {
 
       if (updateError) throw updateError;
 
-      setForm((prev) => ({ ...prev, status: newStatus }));
+      setForm((prev) => ({
+        ...prev,
+        status: newStatus,
+      }));
+
       setSuccessMsg(`Student marked as ${newStatus}.`);
     } catch (err) {
       console.error(err);
@@ -256,26 +320,73 @@ export default function StudentDetailPage() {
   }
 
   const attendanceStats = (() => {
-    const present = attendanceRecords.filter((r) => r.status === "present").length;
-    const absent = attendanceRecords.filter((r) => r.status === "absent").length;
-    const leave = attendanceRecords.filter((r) => r.status === "leave").length;
-    const late = attendanceRecords.filter((r) => r.status === "late").length;
+    const present = attendanceRecords.filter(
+      (r) => r.status === "present"
+    ).length;
+
+    const absent = attendanceRecords.filter(
+      (r) => r.status === "absent"
+    ).length;
+
+    const leave = attendanceRecords.filter(
+      (r) => r.status === "leave"
+    ).length;
+
+    const late = attendanceRecords.filter(
+      (r) => r.status === "late"
+    ).length;
+
     const total = attendanceRecords.length;
-    const percentage = total > 0 ? Math.round(((present + late) / total) * 100) : null;
-    return { present, absent, leave, late, total, percentage };
+
+    const percentage =
+      total > 0
+        ? Math.round(((present + late) / total) * 100)
+        : null;
+
+    return {
+      present,
+      absent,
+      leave,
+      late,
+      total,
+      percentage,
+    };
   })();
 
   const feeTotals = feeRecords.reduce(
     (acc, r) => {
       const due = Number(r.amount_due || 0);
       const paid = Number(r.amount_paid || 0);
+
       acc.due += due;
       acc.paid += paid;
       acc.remaining += due - paid;
+
       return acc;
     },
-    { due: 0, paid: 0, remaining: 0 }
+    {
+      due: 0,
+      paid: 0,
+      remaining: 0,
+    }
   );
+
+  function getBatchLabel() {
+    const batch = batches.find(
+      (b) => b.id === form.batch_id
+    );
+
+    if (!batch) return "";
+
+    if (batch.start_time && batch.end_time) {
+      return `${batch.name} (${batch.start_time.slice(
+        0,
+        5
+      )} - ${batch.end_time.slice(0, 5)})`;
+    }
+
+    return batch.name;
+  }
 
   if (loading) {
     return (
@@ -288,10 +399,24 @@ export default function StudentDetailPage() {
   if (errorMsg && !form) {
     return (
       <div style={{ padding: 24 }}>
-        <div style={{ background: "#fee2e2", color: "#991b1b", padding: 12, borderRadius: 8 }}>
+        <div
+          style={{
+            background: "#fee2e2",
+            color: "#991b1b",
+            padding: 12,
+            borderRadius: 8,
+          }}
+        >
           {errorMsg}
         </div>
-        <Link href="/dashboard/students" style={{ display: "inline-block", marginTop: 16 }}>
+
+        <Link
+          href="/dashboard/students"
+          style={{
+            display: "inline-block",
+            marginTop: 16,
+          }}
+        >
           ← Back to Students
         </Link>
       </div>
@@ -299,8 +424,21 @@ export default function StudentDetailPage() {
   }
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: 16 }}>
-      <Link href="/dashboard/students" style={{ fontSize: 14, color: "#2563eb", textDecoration: "none" }}>
+    <div
+      style={{
+        maxWidth: 600,
+        margin: "0 auto",
+        padding: 16,
+      }}
+    >
+      <Link
+        href="/dashboard/students"
+        style={{
+          fontSize: 14,
+          color: "#2563eb",
+          textDecoration: "none",
+        }}
+      >
         ← Back to Students
       </Link>
 
@@ -315,101 +453,242 @@ export default function StudentDetailPage() {
           gap: 8,
         }}
       >
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>{form.name}</h1>
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <Link
-            href={`/dashboard/students/${studentId}/slip`}
+        <div>
+          <h1
             style={{
-              padding: "8px 14px",
-              background: "#f3f4f6",
-              color: "#374151",
-              border: "1px solid #d1d5db",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
-              textDecoration: "none",
-              alignSelf: "center",
+              fontSize: 22,
+              fontWeight: 700,
+              margin: 0,
             }}
           >
-            📄 Fee Slip
-          </Link>
+            {form.name}
+          </h1>
 
-          {!editMode && (
-            <button
-              onClick={() => setEditMode(true)}
+          {isTeacher && (
+            <div
+              style={{
+                marginTop: 5,
+                color: "#6b7280",
+                fontSize: 12,
+              }}
+            >
+              View only
+            </div>
+          )}
+        </div>
+
+        {!isTeacher && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <Link
+              href={`/dashboard/students/${studentId}/slip`}
               style={{
                 padding: "8px 14px",
-                background: "#2563eb",
-                color: "white",
-                border: "none",
+                background: "#f3f4f6",
+                color: "#374151",
+                border: "1px solid #d1d5db",
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              📄 Fee Slip
+            </Link>
+
+            {!editMode && (
+              <button
+                onClick={() => setEditMode(true)}
+                style={{
+                  padding: "8px 14px",
+                  background: "#2563eb",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                Edit
+              </button>
+            )}
+
+            <button
+              onClick={handleToggleStatus}
+              disabled={saving}
+              style={{
+                padding: "8px 14px",
+                background:
+                  form.status === "active"
+                    ? "#f3f4f6"
+                    : "#dcfce7",
+                color:
+                  form.status === "active"
+                    ? "#374151"
+                    : "#166534",
+                border: "1px solid #d1d5db",
                 borderRadius: 8,
                 fontSize: 14,
                 fontWeight: 600,
               }}
             >
-              Edit
+              {form.status === "active"
+                ? "Deactivate"
+                : "Activate"}
             </button>
-          )}
-
-          <button
-            onClick={handleToggleStatus}
-            disabled={saving}
-            style={{
-              padding: "8px 14px",
-              background: form.status === "active" ? "#f3f4f6" : "#dcfce7",
-              color: form.status === "active" ? "#374151" : "#166534",
-              border: "1px solid #d1d5db",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
-            }}
-          >
-            {form.status === "active" ? "Deactivate" : "Activate"}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {errorMsg && (
-        <div style={{ background: "#fee2e2", color: "#991b1b", padding: 12, borderRadius: 8, marginBottom: 16 }}>
+        <div
+          style={{
+            background: "#fee2e2",
+            color: "#991b1b",
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+          }}
+        >
           {errorMsg}
         </div>
       )}
 
       {successMsg && (
-        <div style={{ background: "#dcfce7", color: "#166534", padding: 12, borderRadius: 8, marginBottom: 16 }}>
+        <div
+          style={{
+            background: "#dcfce7",
+            color: "#166534",
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+          }}
+        >
           {successMsg}
         </div>
       )}
 
       {!editMode ? (
         <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-            <InfoRow label="Father Name" value={form.father_name} />
-            <InfoRow label="Status" value={form.status} />
-            <InfoRow label="Program" value={programs.find((p) => p.id === form.program_id)?.name} />
-            <InfoRow label="Batch" value={batches.find((b) => b.id === form.batch_id)?.name} />
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              marginBottom: 24,
+            }}
+          >
+            <InfoRow
+              label="Father Name"
+              value={form.father_name}
+            />
+
+            <InfoRow
+              label="Status"
+              value={form.status}
+            />
+
+            <InfoRow
+              label="Program"
+              value={
+                programs.find(
+                  (p) => p.id === form.program_id
+                )?.name
+              }
+            />
+
+            <InfoRow
+              label="Batch / Timing"
+              value={getBatchLabel()}
+            />
+
             <InfoRow
               label="Primary Teacher"
-              value={teachers.find((t) => t.user_id === form.primary_teacher_id)?.full_name}
+              value={
+                teachers.find(
+                  (t) =>
+                    t.user_id === form.primary_teacher_id
+                )?.full_name
+              }
             />
-            <InfoRow label="Monthly Fee" value={form.monthly_fee ? `Rs ${form.monthly_fee}` : ""} />
-            <InfoRow label="WhatsApp" value={form.whatsapp} />
-            <InfoRow label="Phone" value={form.phone} />
-            <InfoRow label="Alternate Phone" value={form.alternate_phone} />
-            <InfoRow label="Date of Birth" value={form.dob} />
-            <InfoRow label="Admission Date" value={form.admission_date} />
-            <InfoRow label="Address" value={form.address} />
-            <InfoRow label="Notes" value={form.notes} />
+
+            {!isTeacher && (
+              <InfoRow
+                label="Monthly Fee"
+                value={
+                  form.monthly_fee
+                    ? `Rs ${form.monthly_fee}`
+                    : ""
+                }
+              />
+            )}
+
+            <InfoRow
+              label="WhatsApp"
+              value={form.whatsapp}
+            />
+
+            <InfoRow
+              label="Phone"
+              value={form.phone}
+            />
+
+            <InfoRow
+              label="Alternate Phone"
+              value={form.alternate_phone}
+            />
+
+            {!isTeacher && (
+              <>
+                <InfoRow
+                  label="Date of Birth"
+                  value={form.dob}
+                />
+
+                <InfoRow
+                  label="Admission Date"
+                  value={form.admission_date}
+                />
+
+                <InfoRow
+                  label="Address"
+                  value={form.address}
+                />
+
+                <InfoRow
+                  label="Notes"
+                  value={form.notes}
+                />
+              </>
+            )}
           </div>
 
-          {/* ATTENDANCE HISTORY */}
-          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Attendance History</h2>
+          <h2
+            style={{
+              fontSize: 18,
+              fontWeight: 700,
+              marginBottom: 12,
+            }}
+          >
+            Attendance History
+          </h2>
 
           {attendanceLoading ? (
             <p>Loading attendance...</p>
           ) : attendanceRecords.length === 0 ? (
-            <p style={{ color: "#6b7280" }}>No attendance recorded yet.</p>
+            <p
+              style={{
+                color: "#6b7280",
+                marginBottom: 24,
+              }}
+            >
+              No attendance recorded yet.
+            </p>
           ) : (
             <>
               <div
@@ -424,13 +703,36 @@ export default function StudentDetailPage() {
                   alignItems: "center",
                 }}
               >
-                <div style={{ display: "flex", gap: 10, fontSize: 12, color: "#6b7280", flexWrap: "wrap" }}>
-                  <span>Present: {attendanceStats.present}</span>
-                  <span>Absent: {attendanceStats.absent}</span>
-                  <span>Leave: {attendanceStats.leave}</span>
-                  <span>Late: {attendanceStats.late}</span>
-                  <span>Total: {attendanceStats.total}</span>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    fontSize: 12,
+                    color: "#6b7280",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span>
+                    Present: {attendanceStats.present}
+                  </span>
+
+                  <span>
+                    Absent: {attendanceStats.absent}
+                  </span>
+
+                  <span>
+                    Leave: {attendanceStats.leave}
+                  </span>
+
+                  <span>
+                    Late: {attendanceStats.late}
+                  </span>
+
+                  <span>
+                    Total: {attendanceStats.total}
+                  </span>
                 </div>
+
                 <span
                   style={{
                     fontSize: 15,
@@ -443,11 +745,20 @@ export default function StudentDetailPage() {
                         : "#dc2626",
                   }}
                 >
-                  {attendanceStats.percentage === null ? "—" : `${attendanceStats.percentage}%`}
+                  {attendanceStats.percentage === null
+                    ? "—"
+                    : `${attendanceStats.percentage}%`}
                 </span>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  marginBottom: 24,
+                }}
+              >
                 {attendanceRecords.map((r, idx) => (
                   <div
                     key={idx}
@@ -461,14 +772,18 @@ export default function StudentDetailPage() {
                       borderRadius: 8,
                     }}
                   >
-                    <span style={{ fontSize: 14 }}>{r.attendance_date}</span>
+                    <span style={{ fontSize: 14 }}>
+                      {r.attendance_date}
+                    </span>
+
                     <span
                       style={{
                         fontSize: 12,
                         fontWeight: 600,
                         padding: "3px 10px",
                         borderRadius: 999,
-                        background: STATUS_COLORS[r.status] + "22",
+                        background:
+                          STATUS_COLORS[r.status] + "22",
                         color: STATUS_COLORS[r.status],
                       }}
                     >
@@ -480,138 +795,256 @@ export default function StudentDetailPage() {
             </>
           )}
 
-          {/* FEE HISTORY */}
-          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Fee History</h2>
-
-          {feeLoading ? (
-            <p>Loading fee history...</p>
-          ) : feeRecords.length === 0 ? (
-            <p style={{ color: "#6b7280", marginBottom: 24 }}>No fee records yet.</p>
-          ) : (
+          {!isTeacher && (
             <>
-              <div
+              <h2
                 style={{
-                  background: "white",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 10,
-                  padding: 14,
+                  fontSize: 18,
+                  fontWeight: 700,
                   marginBottom: 12,
-                  display: "flex",
-                  gap: 12,
-                  fontSize: 12,
-                  color: "#6b7280",
-                  flexWrap: "wrap",
                 }}
               >
-                <span>Total Monthly Fee: Rs {feeTotals.due}</span>
-                <span>Total Paid: Rs {feeTotals.paid}</span>
-                <span style={{ fontWeight: 700, color: feeTotals.remaining > 0 ? "#dc2626" : "#16a34a" }}>
-                  Total Remaining: Rs {feeTotals.remaining > 0 ? feeTotals.remaining : 0}
-                </span>
-              </div>
+                Fee History
+              </h2>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
-                {feeRecords.map((r) => {
-                  const due = Number(r.amount_due || 0);
-                  const paid = Number(r.amount_paid || 0);
-                  const remaining = due - paid;
-                  let status = "Unpaid";
-                  let color = "#dc2626";
-                  if (paid >= due && due > 0) {
-                    status = "Paid";
-                    color = "#16a34a";
-                  } else if (paid > 0) {
-                    status = "Partial";
-                    color = "#d97706";
-                  }
-
-                  return (
-                    <div
-                      key={r.id}
-                      style={{
-                        padding: "10px 12px",
-                        background: "white",
-                        border: "1px solid #f3f4f6",
-                        borderRadius: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: 4,
-                        }}
-                      >
-                        <span style={{ fontSize: 14, fontWeight: 600 }}>{monthLabel(r.billing_month)}</span>
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            padding: "3px 10px",
-                            borderRadius: 999,
-                            background: color + "22",
-                            color: color,
-                          }}
-                        >
-                          {status}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 12, color: "#6b7280" }}>
-                        Monthly Fee: Rs {due} · Paid: Rs {paid} · Remaining: Rs {remaining > 0 ? remaining : 0}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-  {/* PAYMENT HISTORY */}
-          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Payment History</h2>
-
-          {feeLoading ? (
-            <p>Loading payments...</p>
-          ) : payments.length === 0 ? (
-            <p style={{ color: "#6b7280" }}>No payments recorded yet.</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {payments.map((p) => (
+              {feeLoading ? (
+                     <p>Loading fee history...</p>
+            ) : feeRecords.length === 0 ? (
+              <p style={{ color: "#6b7280", marginBottom: 24 }}>
+                No fee records yet.
+              </p>
+            ) : (
+              <>
                 <div
-                  key={p.id}
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "10px 12px",
                     background: "white",
-                    border: "1px solid #f3f4f6",
-                    borderRadius: 8,
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: 14,
+                    marginBottom: 12,
+                    display: "flex",
+                    gap: 12,
+                    fontSize: 12,
+                    color: "#6b7280",
+                    flexWrap: "wrap",
                   }}
                 >
-                  <span style={{ fontSize: 14 }}>{p.payment_date}</span>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>Rs {p.amount}</span>
-                  <span style={{ fontSize: 12, color: "#6b7280" }}>{p.payment_method}</span>
+                  <span>Total Monthly Fee: Rs {feeTotals.due}</span>
+
+                  <span>Total Paid: Rs {feeTotals.paid}</span>
+
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color:
+                        feeTotals.remaining > 0
+                          ? "#dc2626"
+                          : "#16a34a",
+                    }}
+                  >
+                    Total Remaining: Rs{" "}
+                    {feeTotals.remaining > 0
+                      ? feeTotals.remaining
+                      : 0}
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    marginBottom: 20,
+                  }}
+                >
+                  {feeRecords.map((r) => {
+                    const due = Number(r.amount_due || 0);
+                    const paid = Number(r.amount_paid || 0);
+                    const remaining = due - paid;
+
+                    let status = "Unpaid";
+                    let color = "#dc2626";
+
+                    if (paid >= due && due > 0) {
+                      status = "Paid";
+                      color = "#16a34a";
+                    } else if (paid > 0) {
+                      status = "Partial";
+                      color = "#d97706";
+                    }
+
+                    return (
+                      <div
+                        key={r.id}
+                        style={{
+                          padding: "10px 12px",
+                          background: "white",
+                          border: "1px solid #f3f4f6",
+                          borderRadius: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: 4,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {monthLabel(r.billing_month)}
+                          </span>
+
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              padding: "3px 10px",
+                              borderRadius: 999,
+                              background: color + "22",
+                              color: color,
+                            }}
+                          >
+                            {status}
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#6b7280",
+                          }}
+                        >
+                          Monthly Fee: Rs {due} · Paid: Rs {paid} ·
+                          Remaining: Rs{" "}
+                          {remaining > 0 ? remaining : 0}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* PAYMENT HISTORY — ADMIN/OWNER ONLY */}
+        {!isTeacher && (
+          <>
+            <h2
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                marginBottom: 12,
+              }}
+            >
+              Payment History
+            </h2>
+
+            {feeLoading ? (
+              <p>Loading payments...</p>
+            ) : payments.length === 0 ? (
+              <p
+                style={{
+                  color: "#6b7280",
+                  marginBottom: 24,
+                }}
+              >
+                No payments recorded yet.
+              </p>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  marginBottom: 24,
+                }}
+              >
+                {payments.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "10px 12px",
+                      background: "white",
+                      border: "1px solid #f3f4f6",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 14 }}>
+                      {p.payment_date}
+                    </span>
+
+                    <span
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Rs {p.amount}
+                    </span>
+
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "#6b7280",
+                      }}
+                    >
+                      {p.payment_method}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       ) : (
-        <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <form
+          onSubmit={handleSave}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
           <label>
             Student Name *
-            <input name="name" value={form.name || ""} onChange={handleChange} required style={inputStyle} />
+            <input
+              name="name"
+              value={form.name || ""}
+              onChange={handleChange}
+              required
+              style={inputStyle}
+            />
           </label>
 
           <label>
             Father Name
-            <input name="father_name" value={form.father_name || ""} onChange={handleChange} style={inputStyle} />
+            <input
+              name="father_name"
+              value={form.father_name || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
           </label>
 
           <label>
             Date of Birth
-            <input type="date" name="dob" value={form.dob || ""} onChange={handleChange} style={inputStyle} />
+            <input
+              type="date"
+              name="dob"
+              value={form.dob || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
           </label>
 
           <label>
@@ -627,7 +1060,12 @@ export default function StudentDetailPage() {
 
           <label>
             Gender
-            <select name="gender" value={form.gender || "male"} onChange={handleChange} style={inputStyle}>
+            <select
+              name="gender"
+              value={form.gender || "male"}
+              onChange={handleChange}
+              style={inputStyle}
+            >
               <option value="male">Male</option>
               <option value="female">Female</option>
             </select>
@@ -635,8 +1073,14 @@ export default function StudentDetailPage() {
 
           <label>
             Program
-            <select name="program_id" value={form.program_id || ""} onChange={handleChange} style={inputStyle}>
+            <select
+              name="program_id"
+              value={form.program_id || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            >
               <option value="">Select Program</option>
+
               {programs.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -647,8 +1091,14 @@ export default function StudentDetailPage() {
 
           <label>
             Batch / Timing
-            <select name="batch_id" value={form.batch_id || ""} onChange={handleChange} style={inputStyle}>
+            <select
+              name="batch_id"
+              value={form.batch_id || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            >
               <option value="">Select Batch</option>
+
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -666,6 +1116,7 @@ export default function StudentDetailPage() {
               style={inputStyle}
             >
               <option value="">Select Teacher</option>
+
               {teachers.map((t) => (
                 <option key={t.user_id} value={t.user_id}>
                   {t.full_name}
@@ -687,12 +1138,22 @@ export default function StudentDetailPage() {
 
           <label>
             WhatsApp
-            <input name="whatsapp" value={form.whatsapp || ""} onChange={handleChange} style={inputStyle} />
+            <input
+              name="whatsapp"
+              value={form.whatsapp || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
           </label>
 
           <label>
             Phone
-            <input name="phone" value={form.phone || ""} onChange={handleChange} style={inputStyle} />
+            <input
+              name="phone"
+              value={form.phone || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
           </label>
 
           <label>
@@ -707,15 +1168,31 @@ export default function StudentDetailPage() {
 
           <label>
             Address
-            <textarea name="address" value={form.address || ""} onChange={handleChange} style={inputStyle} />
+            <textarea
+              name="address"
+              value={form.address || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
           </label>
 
           <label>
             Notes
-            <textarea name="notes" value={form.notes || ""} onChange={handleChange} style={inputStyle} />
+            <textarea
+              name="notes"
+              value={form.notes || ""}
+              onChange={handleChange}
+              style={inputStyle}
+            />
           </label>
 
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginTop: 8,
+            }}
+          >
             <button
               type="submit"
               disabled={saving}
@@ -765,8 +1242,23 @@ function InfoRow({ label, value }) {
         borderBottom: "1px solid #f3f4f6",
       }}
     >
-      <span style={{ color: "#6b7280", fontSize: 14 }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 500, textAlign: "right", maxWidth: "60%" }}>
+      <span
+        style={{
+          color: "#6b7280",
+          fontSize: 14,
+        }}
+      >
+        {label}
+      </span>
+
+      <span
+        style={{
+          fontSize: 14,
+          fontWeight: 500,
+          textAlign: "right",
+          maxWidth: "60%",
+        }}
+      >
         {value || "—"}
       </span>
     </div>
@@ -781,4 +1273,3 @@ const inputStyle = {
   border: "1px solid #d1d5db",
   fontSize: 16,
 };
-        
