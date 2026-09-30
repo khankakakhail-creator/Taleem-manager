@@ -19,6 +19,27 @@ const STATUS_OPTIONS = [
   { value: "late", label: "Late", color: "#2563eb" },
 ];
 
+const REASON_OPTIONS = [
+  { value: "بیماری", label: "بیماری" },
+  { value: "سفر", label: "سفر" },
+  { value: "گھر کا کام", label: "گھر کا کام" },
+  { value: "خوشی/غم", label: "خوشی/غم" },
+  { value: "موسم", label: "موسم" },
+  { value: "بغیر اطلاع", label: "بغیر اطلاع" },
+  { value: "ذاتی کام", label: "ذاتی کام" },
+  { value: "custom", label: "Custom" },
+];
+
+const LATE_OPTIONS = [
+  { value: "5 منٹ", label: "5 منٹ" },
+  { value: "10 منٹ", label: "10 منٹ" },
+  { value: "15 منٹ", label: "15 منٹ" },
+  { value: "30 منٹ", label: "30 منٹ" },
+  { value: "1 گھنٹہ", label: "1 گھنٹہ" },
+  { value: "2 گھنٹے", label: "2 گھنٹے" },
+  { value: "custom", label: "Custom" },
+];
+
 export default function AttendancePage() {
   const { orgId, userId } = useRole();
 
@@ -30,6 +51,11 @@ export default function AttendancePage() {
   const [students, setStudents] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({});
   const [notesMap, setNotesMap] = useState({});
+
+  const [reasonMap, setReasonMap] = useState({});
+  const [customReasonMap, setCustomReasonMap] = useState({});
+  const [lateMap, setLateMap] = useState({});
+  const [customLateMap, setCustomLateMap] = useState({});
 
   const [selectedDate, setSelectedDate] = useState(
     todayDateString()
@@ -90,14 +116,62 @@ export default function AttendancePage() {
 
       const statusMap = {};
       const noteMap = {};
+      const reasons = {};
+      const customReasons = {};
+      const lates = {};
+      const customLates = {};
 
       (attendanceData || []).forEach((a) => {
         statusMap[a.student_id] = a.status;
         noteMap[a.student_id] = a.notes || "";
+
+        const note = a.notes || "";
+
+        if (a.status === "late") {
+          if (note.startsWith("Late: ")) {
+            const lateValue = note
+              .replace("Late: ", "")
+              .split(" | ")[0];
+
+            if (
+              LATE_OPTIONS.some(
+                (option) => option.value === lateValue
+              )
+            ) {
+              lates[a.student_id] = lateValue;
+            } else {
+              lates[a.student_id] = "custom";
+              customLates[a.student_id] = lateValue;
+            }
+          }
+        }
+
+        if (a.status === "absent" || a.status === "leave") {
+          if (note.startsWith("Reason: ")) {
+            const reasonValue = note
+              .replace("Reason: ", "")
+              .split(" | ")[0];
+
+            if (
+              REASON_OPTIONS.some(
+                (option) => option.value === reasonValue
+              )
+            ) {
+              reasons[a.student_id] = reasonValue;
+            } else {
+              reasons[a.student_id] = "custom";
+              customReasons[a.student_id] = reasonValue;
+            }
+          }
+        }
       });
 
       setAttendanceMap(statusMap);
       setNotesMap(noteMap);
+      setReasonMap(reasons);
+      setCustomReasonMap(customReasons);
+      setLateMap(lates);
+      setCustomLateMap(customLates);
     } catch (err) {
       console.error(err);
       setErrorMsg(
@@ -111,6 +185,20 @@ export default function AttendancePage() {
       ...prev,
       [studentId]: status,
     }));
+
+    if (status !== "absent" && status !== "leave") {
+      setReasonMap((prev) => ({
+        ...prev,
+        [studentId]: "",
+      }));
+    }
+
+    if (status !== "late") {
+      setLateMap((prev) => ({
+        ...prev,
+        [studentId]: "",
+      }));
+    }
   }
 
   function setNote(studentId, note) {
@@ -118,6 +206,54 @@ export default function AttendancePage() {
       ...prev,
       [studentId]: note,
     }));
+  }
+
+  function buildNote(studentId, status) {
+    const oldNote = notesMap[studentId]?.trim() || "";
+
+    if (status === "absent" || status === "leave") {
+      const reason = reasonMap[studentId];
+
+      if (!reason) {
+        return oldNote;
+      }
+
+      const reasonText =
+        reason === "custom"
+          ? customReasonMap[studentId]?.trim()
+          : reason;
+
+      if (!reasonText) {
+        return oldNote;
+      }
+
+      return `Reason: ${reasonText}${
+        oldNote ? ` | Note: ${oldNote}` : ""
+      }`;
+    }
+
+    if (status === "late") {
+      const lateValue = lateMap[studentId];
+
+      if (!lateValue) {
+        return oldNote;
+      }
+
+      const lateText =
+        lateValue === "custom"
+          ? customLateMap[studentId]?.trim()
+          : lateValue;
+
+      if (!lateText) {
+        return oldNote;
+      }
+
+      return `Late: ${lateText}${
+        oldNote ? ` | Note: ${oldNote}` : ""
+      }`;
+    }
+
+    return oldNote;
   }
 
   async function handleSaveAll() {
@@ -137,13 +273,42 @@ export default function AttendancePage() {
           student_id: studentId,
           attendance_date: selectedDate,
           status,
-          notes: notesMap[studentId]?.trim() || null,
+          notes: buildNote(studentId, status) || null,
           marked_by_user_id: userId,
         }));
 
       if (rows.length === 0) {
         setErrorMsg(
           "Please mark attendance for at least one student."
+        );
+        setSaving(false);
+        return;
+      }
+
+      const invalidReason = rows.find(
+        (row) =>
+          (row.status === "absent" ||
+            row.status === "leave") &&
+          !row.notes?.includes("Reason:")
+      );
+
+      if (invalidReason) {
+        setErrorMsg(
+          "Please select a reason for every Absent/Leave student."
+        );
+        setSaving(false);
+        return;
+      }
+
+      const invalidLate = rows.find(
+        (row) =>
+          row.status === "late" &&
+          !row.notes?.includes("Late:")
+      );
+
+      if (invalidLate) {
+        setErrorMsg(
+          "Please select the late duration for every Late student."
         );
         setSaving(false);
         return;
@@ -158,6 +323,8 @@ export default function AttendancePage() {
       if (upsertError) throw upsertError;
 
       setSuccessMsg("Attendance saved successfully!");
+
+      await loadAttendanceForDate(selectedDate);
     } catch (err) {
       console.error(err);
       setErrorMsg(
@@ -271,120 +438,259 @@ export default function AttendancePage() {
               marginBottom: 20,
             }}
           >
-            {students.map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  background: "white",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 10,
-                  padding: 12,
-                }}
-              >
+            {students.map((s) => {
+              const status = attendanceMap[s.id];
+
+              return (
                 <div
+                  key={s.id}
                   style={{
-                    fontWeight: 600,
-                    fontSize: 15,
-                    marginBottom: 8,
+                    background: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: 12,
                   }}
                 >
-                  {s.name}
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 15,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {s.name}
 
-                  {s.father_name ? (
-                    <span
-                      style={{
-                        fontWeight: 400,
-                        color: "#6b7280",
-                        fontSize: 13,
-                      }}
-                    >
-                      {" "}
-                      · S/O {s.father_name}
-                    </span>
-                  ) : null}
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 6,
-                    flexWrap: "wrap",
-                    marginBottom: 8,
-                  }}
-                >
-                  {STATUS_OPTIONS.map((opt) => {
-                    const isSelected =
-                      attendanceMap[s.id] === opt.value;
-
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={() =>
-                          setStatus(s.id, opt.value)
-                        }
+                    {s.father_name ? (
+                      <span
                         style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: `1px solid ${
-                            isSelected
-                              ? opt.color
-                              : "#d1d5db"
-                          }`,
-                          background: isSelected
-                            ? opt.color
-                            : "white",
-                          color: isSelected
-                            ? "white"
-                            : "#374151",
+                          fontWeight: 400,
+                          color: "#6b7280",
                           fontSize: 13,
-                          fontWeight: 600,
                         }}
                       >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                        {" "}
+                        · S/O {s.father_name}
+                      </span>
+                    ) : null}
+                  </div>
 
-                {attendanceMap[s.id] && (
-                  <input
-                    type="text"
-                    placeholder="Optional note (e.g. reason for leave)"
-                    value={notesMap[s.id] || ""}
-                    onChange={(e) =>
-                      setNote(s.id, e.target.value)
-                    }
+                  <div
                     style={{
-                      width: "100%",
-                      padding: 8,
-                      borderRadius: 6,
-                      border: "1px solid #e5e7eb",
-                      fontSize: 13,
+                      display: "flex",
+                      gap: 6,
+                      flexWrap: "wrap",
+                      marginBottom: 8,
                     }}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+                  >
+                    {STATUS_OPTIONS.map((opt) => {
+                      const isSelected =
+                        status === opt.value;
 
-          <button
-            onClick={handleSaveAll}
-            disabled={saving}
-            style={{
-              width: "100%",
-              padding: "14px 16px",
-              background: "#16a34a",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 16,
-              fontWeight: 600,
-            }}
-          >
-            {saving ? "Saving..." : "Save Attendance"}
-          </button>
-        </>
-      )}
-    </div>
-  );
-                                      }
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() =>
+                            setStatus(s.id, opt.value)
+                          }
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: `1px solid ${
+                              isSelected
+                                ? opt.color
+                                : "#d1d5db"
+                            }`,
+                            background: isSelected
+                              ? opt.color
+                              : "white",
+                            color: isSelected
+                              ? "white"
+                              : "#374151",
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {(status === "absent" ||
+                    status === "leave") && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        background: "#f9fafb",
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          marginBottom: 8,
+                        }}
+                      >
+                        وجہ منتخب کریں
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {REASON_OPTIONS.map((option) => {
+                          const selected =
+                            reasonMap[s.id] ===
+                            option.value;
+
+                          return (
+                            <button
+                              key={option.value}
+                              onClick={() =>
+                                setReasonMap((prev) => ({
+                                  ...prev,
+                                  [s.id]: option.value,
+                                }))
+                              }
+                              style={{
+                                padding: "7px 10px",
+                                borderRadius: 7,
+                                border: `1px solid ${
+                                  selected
+                                    ? "#2563eb"
+                                    : "#d1d5db"
+                                }`,
+                                background: selected
+                                  ? "#2563eb"
+                                  : "white",
+                                color: selected
+                                  ? "white"
+                                  : "#374151",
+                                fontSize: 12,
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {reasonMap[s.id] === "custom" && (
+                        <input
+                          type="text"
+                          placeholder="اپنی وجہ لکھیں"
+                          value={
+                            customReasonMap[s.id] || ""
+                          }
+                          onChange={(e) =>
+                            setCustomReasonMap((prev) => ({
+                              ...prev,
+                              [s.id]: e.target.value,
+                            }))
+                          }
+                          style={{
+                            width: "100%",
+                            marginTop: 8,
+                            padding: 9,
+                            borderRadius: 7,
+                            border:
+                              "1px solid #d1d5db",
+                            fontSize: 13,
+                            direction: "rtl",
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {status === "late" && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        background: "#f9fafb",
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          marginBottom: 8,
+                        }}
+                      >
+                        کتنی دیر سے آیا؟
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {LATE_OPTIONS.map((option) => {
+                          const selected =
+                            lateMap[s.id] ===
+                            option.value;
+
+                          return (
+                            <button
+                              key={option.value}
+                              onClick={() =>
+                                setLateMap((prev) => ({
+                                  ...prev,
+                                  [s.id]: option.value,
+                                }))
+                              }
+                              style={{
+                                padding: "7px 10px",
+                                borderRadius: 7,
+                                border: `1px solid ${
+                                  selected
+                                    ? "#2563eb"
+                                    : "#d1d5db"
+                                }`,
+                                background: selected
+                                  ? "#2563eb"
+                                  : "white",
+                                color: selected
+                                  ? "white"
+                                  : "#374151",
+                                fontSize: 12,
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {lateMap[s.id] === "custom" && (
+                        <input
+                          type="text"
+                          placeholder="مثلاً 45 منٹ یا 1 گھنٹہ 20 منٹ"
+                          value={
+                            customLateMap[s.id] || ""
+                          }
+                          onChange={(e) =>
+                            setCustomLateMap((prev) => ({
+                              ...prev,
+                              [s.id]: e.target.value,
+                            }))
+                          }
+                          style={{
+                            width: "100%",
+                            marginTop: 8,
+                            padding: 9,
+                            borderRadius: 7,
+                            border:
+                              "1px solid #d1d5db",
+                            fontSize: 13,
+                            direction: "rtl",
+                      
