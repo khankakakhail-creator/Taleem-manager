@@ -344,7 +344,7 @@ export default function StudentDetailPage() {
     } finally {
       setSaving(false);
     }
-    }
+  }
     return (
     <div style={{ maxWidth: 800, margin: "0 auto", padding: 16 }}>
       {loading ? (
@@ -855,9 +855,7 @@ export default function StudentDetailPage() {
                   fontSize: 15,
                   resize: "vertical",
                   background:
-                    role === "teacher"
-                      ? "#f3f4f6"
-                      : "white",
+                    role === "teacher" ? "#f3f4f6" : "white",
                 }}
               />
             </label>
@@ -885,147 +883,149 @@ export default function StudentDetailPage() {
                   border: "1px solid #d1d5db",
                   fontSize: 15,
                   background:
-                    role === "teacher"
-                      ? "#f3f4f6"
-                      : "white",
+                    role === "teacher" ? "#f3f4f6" : "white",
                 }}
               >
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
             </label>
-          </div>
+
+            {role !== "teacher" && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  marginTop: 16,
+                }}
+              >
+                <button
+                  type="submit"
+                  disabled={saving}
+                  style={{
+                    padding: "10px 16px",
+                    border: "none",
+                    borderRadius: 8,
+                    background: saving ? "#9ca3af" : "#16a34a",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: saving ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleToggleStatus}
+                  disabled={saving}
+                  style={{
+                    padding: "10px 16px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: 8,
+                    background: "white",
+                    color: "#111827",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: saving ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {student.status === "active"
+                    ? "Mark Inactive"
+                    : "Mark Active"}
+                </button>
+              </div>
+            )}
+          </form>
 
           {role !== "teacher" && (
             <div
               style={{
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
+                background: "white",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 16,
                 marginBottom: 16,
               }}
             >
-              <button
-                type="submit"
-                disabled={saving}
+              <h2
                 style={{
-                  padding: "10px 16px",
-                  border: "none",
-                  borderRadius: 8,
-                  background: saving ? "#9ca3af" : "#16a34a",
-                  color: "white",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: saving ? "not-allowed" : "pointer",
+                  fontSize: 17,
+                  fontWeight: 700,
+                  marginBottom: 12,
                 }}
               >
-                {saving ? "Saving..." : "Save Changes"}
-              </button>
+                Student Summary
+              </h2>
 
-              <button
-                type="button"
-                onClick={handleToggleStatus}
-                disabled={saving}
+              <div
                 style={{
-                  padding: "10px 16px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: 8,
-                  background: "white",
-                  color: "#111827",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: saving ? "not-allowed" : "pointer",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                  fontSize: 13,
                 }}
               >
-                {student.status === "active"
-                  ? "Mark Inactive"
-                  : "Mark Active"}
-              </button>
+                <div>
+                  <span style={{ color: "#6b7280" }}>
+                    Program
+                  </span>
+
+                  <div style={{ fontWeight: 600 }}>
+                    {student.programs?.name || "No Program"}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ color: "#6b7280" }}>
+                    Batch
+                  </span>
+
+                  <div style={{ fontWeight: 600 }}>
+                    {student.batches?.name || "No Batch"}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ color: "#6b7280" }}>
+                    Monthly Fee
+                  </span>
+
+                  <div style={{ fontWeight: 600 }}>
+                    Rs {student.monthly_fee || 0}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ color: "#6b7280" }}>
+                    Status
+                  </span>
+
+                  <div style={{ fontWeight: 600 }}>
+                    {student.status}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-        </form>
 
-        {role !== "teacher" && (
-          <div
-            style={{
-              background: "white",
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              padding: 16,
-              marginBottom: 16,
-            }}
-          >
-            <h2
-              style={{
-                fontSize: 17,
-                fontWeight: 700,
-                marginBottom: 12,
-              }}
-            >
-              Student Summary
-            </h2>
-
+          {role !== "teacher" && (
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
+                background: "#f9fafb",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 14,
                 fontSize: 13,
+                color: "#6b7280",
               }}
             >
-              <div>
-                <span style={{ color: "#6b7280" }}>
-                  Program
-                </span>
-                <div style={{ fontWeight: 600 }}>
-                  {student.programs?.name || "No Program"}
-                </div>
-              </div>
-
-              <div>
-                <span style={{ color: "#6b7280" }}>
-                  Batch
-                </span>
-                <div style={{ fontWeight: 600 }}>
-                  {student.batches?.name || "No Batch"}
-                </div>
-              </div>
-
-              <div>
-                <span style={{ color: "#6b7280" }}>
-                  Monthly Fee
-                </span>
-                <div style={{ fontWeight: 600 }}>
-                  Rs {student.monthly_fee || 0}
-                </div>
-              </div>
-
-              <div>
-                <span style={{ color: "#6b7280" }}>
-                  Status
-                </span>
-                <div style={{ fontWeight: 600 }}>
-                  {student.status}
-                </div>
-              </div>
+              Student ID: {student.id}
             </div>
-          </div>
-        )}
-
-        {role !== "teacher" && (
-          <div
-            style={{
-              background: "#f9fafb",
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              padding: 14,
-              fontSize: 13,
-              color: "#6b7280",
-            }}
-          >
-            Student ID: {student.id}
-          </div>
-        )}
+          )}
+        </>
       )}
     </div>
   );
@@ -1071,4 +1071,4 @@ function Field({
       />
     </label>
   );
-                  }
+            }
