@@ -16,6 +16,7 @@ function currentBillingMonth() {
 export default function DashboardHomePage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+  const [role, setRole] = useState(null);
 
   const [totalStudents, setTotalStudents] = useState(0);
   const [presentToday, setPresentToday] = useState(0);
@@ -44,7 +45,7 @@ export default function DashboardHomePage() {
 
       const { data: orgMember, error: orgError } = await supabase
         .from("organization_members")
-        .select("organization_id")
+        .select("organization_id, role")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -52,6 +53,8 @@ export default function DashboardHomePage() {
       if (!orgMember) throw new Error("No organization found for this user.");
 
       const orgId = orgMember.organization_id;
+      setRole(orgMember.role);
+
       const today = todayDateString();
       const billingMonth = currentBillingMonth();
 
@@ -75,11 +78,16 @@ export default function DashboardHomePage() {
       const present = (todayAttendance || []).filter(
         (a) => a.status === "present" || a.status === "late"
       ).length;
-      const absentList = (todayAttendance || []).filter((a) => a.status === "absent");
+
+      const absentList = (todayAttendance || []).filter(
+        (a) => a.status === "absent"
+      );
 
       setPresentToday(present);
       setAbsentToday(absentList.length);
-      setAbsentStudentNames(absentList.map((a) => a.students?.name).filter(Boolean));
+      setAbsentStudentNames(
+        absentList.map((a) => a.students?.name).filter(Boolean)
+      );
 
       const { data: feeRecords, error: feeError } = await supabase
         .from("fee_records")
@@ -89,11 +97,18 @@ export default function DashboardHomePage() {
 
       if (feeError) throw feeError;
 
-      const collected = (feeRecords || []).reduce((sum, r) => sum + Number(r.amount_paid || 0), 0);
-      const due = (feeRecords || []).reduce(
-        (sum, r) => sum + (Number(r.amount_due || 0) - Number(r.amount_paid || 0)),
+      const collected = (feeRecords || []).reduce(
+        (sum, r) => sum + Number(r.amount_paid || 0),
         0
       );
+
+      const due = (feeRecords || []).reduce(
+        (sum, r) =>
+          sum +
+          (Number(r.amount_due || 0) - Number(r.amount_paid || 0)),
+        0
+      );
+
       setFeesCollected(collected);
       setFeesDue(due > 0 ? due : 0);
 
@@ -106,6 +121,7 @@ export default function DashboardHomePage() {
         .limit(5);
 
       if (paymentsError) throw paymentsError;
+
       setRecentPayments(payments || []);
     } catch (err) {
       console.error(err);
@@ -117,11 +133,36 @@ export default function DashboardHomePage() {
 
   return (
     <div style={{ maxWidth: 700, margin: "0 auto", padding: 16 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Taleem Manager</h1>
-      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>{todayDateString()}</p>
+      <h1
+        style={{
+          fontSize: 22,
+          fontWeight: 700,
+          marginBottom: 4,
+        }}
+      >
+        Taleem Manager
+      </h1>
+
+      <p
+        style={{
+          fontSize: 13,
+          color: "#6b7280",
+          marginBottom: 20,
+        }}
+      >
+        {todayDateString()}
+      </p>
 
       {errorMsg && (
-        <div style={{ background: "#fee2e2", color: "#991b1b", padding: 12, borderRadius: 8, marginBottom: 16 }}>
+        <div
+          style={{
+            background: "#fee2e2",
+            color: "#991b1b",
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+          }}
+        >
           {errorMsg}
         </div>
       )}
@@ -130,11 +171,37 @@ export default function DashboardHomePage() {
         <p>Loading dashboard...</p>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-            <StatCard label="Total Students" value={totalStudents} color="#111827" />
-            <StatCard label="Present Today" value={presentToday} color="#16a34a" />
-            <StatCard label="Absent Today" value={absentToday} color="#dc2626" />
-            <StatCard label="Fees Collected" value={`Rs ${feesCollected}`} color="#2563eb" />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+              marginBottom: 20,
+            }}
+          >
+            <StatCard
+              label="Total Students"
+              value={totalStudents}
+              color="#111827"
+            />
+
+            <StatCard
+              label="Present Today"
+              value={presentToday}
+              color="#16a34a"
+            />
+
+            <StatCard
+              label="Absent Today"
+              value={absentToday}
+              color="#dc2626"
+            />
+
+            <StatCard
+              label="Fees Collected"
+              value={`Rs ${feesCollected}`}
+              color="#2563eb"
+            />
           </div>
 
           <div
@@ -146,28 +213,84 @@ export default function DashboardHomePage() {
               marginBottom: 20,
             }}
           >
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#991b1b", marginBottom: 6 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: "#991b1b",
+                marginBottom: 6,
+              }}
+            >
               Fees Due This Month: Rs {feesDue}
             </div>
+
             {absentStudentNames.length > 0 && (
-              <div style={{ fontSize: 13, color: "#991b1b" }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#991b1b",
+                }}
+              >
                 Absent today: {absentStudentNames.join(", ")}
               </div>
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
-            <QuickAction href="/dashboard/students/add" label="+ Add Student" />
-            <QuickAction href="/dashboard/attendance" label="✓ Mark Attendance" />
-            <QuickAction href="/dashboard/fees" label="💰 Collect Fee" />
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: 24,
+              flexWrap: "wrap",
+            }}
+          >
+            {role !== "teacher" && (
+              <QuickAction
+                href="/dashboard/students/add"
+                label="+ Add Student"
+              />
+            )}
+
+            <QuickAction
+              href="/dashboard/attendance"
+              label="✓ Mark Attendance"
+            />
+
+            {role !== "teacher" && (
+              <QuickAction
+                href="/dashboard/fees"
+                label="💰 Collect Fee"
+              />
+            )}
           </div>
 
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>Recent Payments</h2>
+          <h2
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              marginBottom: 10,
+            }}
+          >
+            Recent Payments
+          </h2>
 
           {recentPayments.length === 0 ? (
-            <p style={{ color: "#6b7280", fontSize: 14 }}>No payments recorded yet.</p>
+            <p
+              style={{
+                color: "#6b7280",
+                fontSize: 14,
+              }}
+            >
+              No payments recorded yet.
+            </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
               {recentPayments.map((p) => (
                 <div
                   key={p.id}
@@ -182,8 +305,14 @@ export default function DashboardHomePage() {
                   }}
                 >
                   <span>{p.students?.name || "Unknown"}</span>
-                  <span style={{ color: "#6b7280" }}>{p.payment_date}</span>
-                  <span style={{ fontWeight: 600 }}>Rs {p.amount}</span>
+
+                  <span style={{ color: "#6b7280" }}>
+                    {p.payment_date}
+                  </span>
+
+                  <span style={{ fontWeight: 600 }}>
+                    Rs {p.amount}
+                  </span>
                 </div>
               ))}
             </div>
@@ -204,8 +333,25 @@ function StatCard({ label, value, color }) {
         padding: 14,
       }}
     >
-      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color }}>{value}</div>
+      <div
+        style={{
+          fontSize: 12,
+          color: "#6b7280",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          color,
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
