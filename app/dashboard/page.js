@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../utils/supabase";
+import { useRole } from "../utils/role-context";
 
 function todayDateString() {
   return new Date().toISOString().slice(0, 10);
@@ -14,9 +15,10 @@ function currentBillingMonth() {
 }
 
 export default function DashboardHomePage() {
+  const { role, orgId } = useRole();
+
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
-  const [role, setRole] = useState(null);
 
   const [totalStudents, setTotalStudents] = useState(0);
   const [presentToday, setPresentToday] = useState(0);
@@ -27,35 +29,19 @@ export default function DashboardHomePage() {
   const [absentStudentNames, setAbsentStudentNames] = useState([]);
 
   useEffect(() => {
+    if (!orgId) return;
+
     loadDashboard();
-  }, []);
+  }, [orgId, role]);
 
   async function loadDashboard() {
     setLoading(true);
     setErrorMsg("");
 
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) throw userError;
-      if (!user) throw new Error("User not logged in.");
-
-      const { data: orgMember, error: orgError } = await supabase
-        .from("organization_members")
-        .select("organization_id, role")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (orgError) throw orgError;
-      if (!orgMember) {
-        throw new Error("No organization found for this user.");
+      if (!orgId) {
+        throw new Error("No active organization found.");
       }
-
-      const orgId = orgMember.organization_id;
-      setRole(orgMember.role);
 
       const today = todayDateString();
       const billingMonth = currentBillingMonth();
@@ -68,7 +54,10 @@ export default function DashboardHomePage() {
         error: studentCountError,
       } = await supabase
         .from("students")
-        .select("id", { count: "exact", head: true })
+        .select("id", {
+          count: "exact",
+          head: true,
+        })
         .eq("organization_id", orgId)
         .eq("status", "active");
 
@@ -91,7 +80,9 @@ export default function DashboardHomePage() {
       if (attendanceError) throw attendanceError;
 
       const present = (todayAttendance || []).filter(
-        (a) => a.status === "present" || a.status === "late"
+        (a) =>
+          a.status === "present" ||
+          a.status === "late"
       ).length;
 
       const absentList = (todayAttendance || []).filter(
@@ -110,7 +101,10 @@ export default function DashboardHomePage() {
       // -----------------------------
       // FEES
       // -----------------------------
-      const { data: feeRecords, error: feeError } = await supabase
+      const {
+        data: feeRecords,
+        error: feeError,
+      } = await supabase
         .from("fee_records")
         .select("amount_due, amount_paid")
         .eq("organization_id", orgId)
@@ -119,15 +113,18 @@ export default function DashboardHomePage() {
       if (feeError) throw feeError;
 
       const collected = (feeRecords || []).reduce(
-        (sum, r) => sum + Number(r.amount_paid || 0),
+        (sum, r) =>
+          sum + Number(r.amount_paid || 0),
         0
       );
 
       const due = (feeRecords || []).reduce(
         (sum, r) =>
           sum +
-          (Number(r.amount_due || 0) -
-            Number(r.amount_paid || 0)),
+          (
+            Number(r.amount_due || 0) -
+            Number(r.amount_paid || 0)
+          ),
         0
       );
 
@@ -136,10 +133,9 @@ export default function DashboardHomePage() {
 
       // -----------------------------
       // RECENT PAYMENTS
-      // Teacher کو payments کی
-      // query بھی نہیں چلانی
+      // ADMIN / OWNER ONLY
       // -----------------------------
-      if (orgMember.role !== "teacher") {
+      if (role !== "teacher") {
         const {
           data: payments,
           error: paymentsError,
@@ -165,8 +161,10 @@ export default function DashboardHomePage() {
       }
     } catch (err) {
       console.error(err);
+
       setErrorMsg(
-        err.message || "Failed to load dashboard."
+        err.message ||
+          "Failed to load dashboard."
       );
     } finally {
       setLoading(false);
@@ -459,4 +457,4 @@ function QuickAction({
       {label}
     </Link>
   );
-        }
+            }
