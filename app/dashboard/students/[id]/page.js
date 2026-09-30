@@ -1,69 +1,56 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../utils/supabase";
 
-const STATUS_LABELS = {
-  present: "Present",
-  absent: "Absent",
-  leave: "Leave",
-  late: "Late",
-};
-
-const STATUS_COLORS = {
-  present: "#16a34a",
-  absent: "#dc2626",
-  leave: "#d97706",
-  late: "#2563eb",
-};
-
-function monthLabel(billingMonthDate) {
-  const d = new Date(billingMonthDate);
-
-  return d.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
-}
-
 export default function StudentDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const studentId = params.id;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
-  const [editMode, setEditMode] = useState(false);
 
   const [role, setRole] = useState(null);
+  const [student, setStudent] = useState(null);
 
   const [programs, setPrograms] = useState([]);
   const [batches, setBatches] = useState([]);
   const [teachers, setTeachers] = useState([]);
 
-  const [form, setForm] = useState(null);
-
-  const [attendanceRecords, setAttendanceRecords] = useState([]);
-  const [attendanceLoading, setAttendanceLoading] = useState(true);
-
-  const [feeRecords, setFeeRecords] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [feeLoading, setFeeLoading] = useState(true);
-
-  const isTeacher = role === "teacher";
+  const [formData, setFormData] = useState({
+    name: "",
+    father_name: "",
+    photo_url: "",
+    dob: "",
+    gender: "",
+    admission_date: "",
+    program_id: "",
+    batch_id: "",
+    primary_teacher_id: "",
+    monthly_fee: "",
+    whatsapp: "",
+    phone: "",
+    alternate_phone: "",
+    address: "",
+    notes: "",
+    status: "active",
+  });
 
   useEffect(() => {
-    loadData();
-    loadAttendance();
-    loadFeeHistory();
+    if (studentId) {
+      loadStudent();
+    }
   }, [studentId]);
 
-  async function loadData() {
+  async function loadStudent() {
     setLoading(true);
     setErrorMsg("");
+    setSuccessMsg("");
 
     try {
       const {
@@ -72,10 +59,7 @@ export default function StudentDetailPage() {
       } = await supabase.auth.getUser();
 
       if (userError) throw userError;
-
-      if (!user) {
-        throw new Error("User not logged in.");
-      }
+      if (!user) throw new Error("User not logged in.");
 
       const { data: orgMember, error: orgError } = await supabase
         .from("organization_members")
@@ -84,21 +68,51 @@ export default function StudentDetailPage() {
         .maybeSingle();
 
       if (orgError) throw orgError;
-
       if (!orgMember) {
         throw new Error("No organization found for this user.");
       }
 
-      const currentOrgId = orgMember.organization_id;
       const currentRole = orgMember.role;
-
       setRole(currentRole);
+
+      // Teachers are not allowed to open student profiles.
+      if (currentRole === "teacher") {
+        router.replace("/dashboard/students");
+        return;
+      }
+
+      const orgId = orgMember.organization_id;
 
       const { data: studentData, error: studentError } = await supabase
         .from("students")
-        .select("*")
+        .select(
+          `
+          id,
+          organization_id,
+          name,
+          father_name,
+          photo_url,
+          dob,
+          gender,
+          admission_date,
+          program_id,
+          batch_id,
+          primary_teacher_id,
+          monthly_fee,
+          whatsapp,
+          phone,
+          alternate_phone,
+          address,
+          notes,
+          status,
+          created_at,
+          updated_at,
+          programs(name),
+          batches(name)
+          `
+        )
         .eq("id", studentId)
-        .eq("organization_id", currentOrgId)
+        .eq("organization_id", orgId)
         .maybeSingle();
 
       if (studentError) throw studentError;
@@ -107,157 +121,77 @@ export default function StudentDetailPage() {
         throw new Error("Student not found.");
       }
 
-      setForm(studentData);
+      setStudent(studentData);
 
-      const { data: programsData } = await supabase
+      setFormData({
+        name: studentData.name || "",
+        father_name: studentData.father_name || "",
+        photo_url: studentData.photo_url || "",
+        dob: studentData.dob || "",
+        gender: studentData.gender || "",
+        admission_date: studentData.admission_date || "",
+        program_id: studentData.program_id || "",
+        batch_id: studentData.batch_id || "",
+        primary_teacher_id: studentData.primary_teacher_id || "",
+        monthly_fee:
+          studentData.monthly_fee !== null &&
+          studentData.monthly_fee !== undefined
+            ? String(studentData.monthly_fee)
+            : "",
+        whatsapp: studentData.whatsapp || "",
+        phone: studentData.phone || "",
+        alternate_phone: studentData.alternate_phone || "",
+        address: studentData.address || "",
+        notes: studentData.notes || "",
+        status: studentData.status || "active",
+      });
+
+      const { data: programsData, error: programsError } = await supabase
         .from("programs")
         .select("id, name")
-        .eq("organization_id", currentOrgId)
+        .eq("organization_id", orgId)
         .eq("active", true)
         .order("name");
+
+      if (programsError) throw programsError;
 
       setPrograms(programsData || []);
 
-      const { data: batchesData } = await supabase
+      const { data: batchesData, error: batchesError } = await supabase
         .from("batches")
         .select("id, name, start_time, end_time")
-        .eq("organization_id", currentOrgId)
+        .eq("organization_id", orgId)
         .eq("active", true)
         .order("name");
 
+      if (batchesError) throw batchesError;
+
       setBatches(batchesData || []);
 
-      const { data: membersData } = await supabase
-        .from("organization_members")
-        .select("user_id, role")
-        .eq("organization_id", currentOrgId);
+      const { data: teachersData, error: teachersError } =
+        await supabase
+          .from("organization_members")
+          .select(
+            "user_id, profiles(full_name)"
+          )
+          .eq("organization_id", orgId)
+          .eq("role", "teacher");
 
-      const memberIds = (membersData || []).map(
-        (m) => m.user_id
-      );
+      if (teachersError) throw teachersError;
 
-      let teachersList = [];
-
-      if (memberIds.length > 0) {
-        const { data: profilesData } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .in("id", memberIds);
-
-        teachersList = (membersData || [])
-          .filter((m) => m.role === "teacher")
-          .map((m) => {
-            const profile = (profilesData || []).find(
-              (p) => p.id === m.user_id
-            );
-
-            return {
-              user_id: m.user_id,
-              full_name:
-                profile?.full_name || "Unnamed Teacher",
-            };
-          });
-      }
-
-      setTeachers(teachersList);
+      setTeachers(teachersData || []);
     } catch (err) {
       console.error(err);
-      setErrorMsg(
-        err.message || "Failed to load student."
-      );
+      setErrorMsg(err.message || "Failed to load student.");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadAttendance() {
-    setAttendanceLoading(true);
-
-    try {
-      const { data, error } = await supabase
-        .from("attendance")
-        .select(
-          "attendance_date, status, notes"
-        )
-        .eq("student_id", studentId)
-        .order("attendance_date", {
-          ascending: false,
-        });
-
-      if (error) throw error;
-
-      setAttendanceRecords(data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setAttendanceLoading(false);
-    }
-  }
-
-  async function loadFeeHistory() {
-    setFeeLoading(true);
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const { data: member } = await supabase
-        .from("organization_members")
-        .select("role")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (member?.role === "teacher") {
-        setFeeRecords([]);
-        setPayments([]);
-        return;
-      }
-
-      const { data: feeData, error: feeError } =
-        await supabase
-          .from("fee_records")
-          .select(
-            "id, billing_month, amount_due, amount_paid"
-          )
-          .eq("student_id", studentId)
-          .order("billing_month", {
-            ascending: false,
-          });
-
-      if (feeError) throw feeError;
-
-      setFeeRecords(feeData || []);
-
-      const {
-        data: paymentData,
-        error: paymentError,
-      } = await supabase
-        .from("payments")
-        .select(
-          "id, amount, payment_date, payment_method"
-        )
-        .eq("student_id", studentId)
-        .order("payment_date", {
-          ascending: false,
-        });
-
-      if (paymentError) throw paymentError;
-
-      setPayments(paymentData || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setFeeLoading(false);
     }
   }
 
   function handleChange(e) {
     const { name, value } = e.target;
 
-    setForm((prev) => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -266,103 +200,135 @@ export default function StudentDetailPage() {
   async function handleSave(e) {
     e.preventDefault();
 
-    if (isTeacher) {
-      setErrorMsg(
-        "Teachers cannot edit student profiles."
-      );
+    if (role === "teacher") {
+      setErrorMsg("Teachers are not allowed to edit students.");
       return;
     }
 
+    setSaving(true);
     setErrorMsg("");
     setSuccessMsg("");
-    setSaving(true);
 
     try {
-      const payload = {
-        name: form.name?.trim(),
-        father_name:
-          form.father_name?.trim() || null,
-        photo_url:
-          form.photo_url?.trim() || null,
-        dob: form.dob || null,
-        admission_date:
-          form.admission_date || null,
-        gender: form.gender || null,
-        program_id:
-          form.program_id || null,
-        batch_id:
-          form.batch_id || null,
+      if (!formData.name.trim()) {
+        throw new Error("Student name is required.");
+      }
+
+      if (formData.monthly_fee !== "") {
+        const fee = Number(formData.monthly_fee);
+
+        if (Number.isNaN(fee) || fee < 0) {
+          throw new Error("Monthly fee must be a valid non-negative number.");
+        }
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) throw userError;
+      if (!user) throw new Error("User not logged in.");
+
+      const { data: orgMember, error: orgError } = await supabase
+        .from("organization_members")
+        .select("organization_id, role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (orgError) throw orgError;
+      if (!orgMember) {
+        throw new Error("No organization found for this user.");
+      }
+
+      if (
+        orgMember.role !== "owner" &&
+        orgMember.role !== "admin"
+      ) {
+        throw new Error("You are not allowed to edit students.");
+      }
+
+      const updateData = {
+        name: formData.name.trim(),
+        father_name: formData.father_name.trim() || null,
+        photo_url: formData.photo_url.trim() || null,
+        dob: formData.dob || null,
+        gender: formData.gender || null,
+        admission_date: formData.admission_date || null,
+        program_id: formData.program_id || null,
+        batch_id: formData.batch_id || null,
         primary_teacher_id:
-          form.primary_teacher_id || null,
-        monthly_fee: form.monthly_fee
-          ? Number(form.monthly_fee)
-          : null,
-        whatsapp:
-          form.whatsapp?.trim() || null,
-        phone:
-          form.phone?.trim() || null,
+          formData.primary_teacher_id || null,
+        monthly_fee:
+          formData.monthly_fee === ""
+            ? 0
+            : Number(formData.monthly_fee),
+        whatsapp: formData.whatsapp.trim() || null,
+        phone: formData.phone.trim() || null,
         alternate_phone:
-          form.alternate_phone?.trim() || null,
-        address:
-          form.address?.trim() || null,
-        notes:
-          form.notes?.trim() || null,
-        status: form.status || "active",
+          formData.alternate_phone.trim() || null,
+        address: formData.address.trim() || null,
+        notes: formData.notes.trim() || null,
+        status: formData.status || "active",
       };
 
-      const { error: updateError } =
+      const { data: updatedStudent, error: updateError } =
         await supabase
           .from("students")
-          .update(payload)
-          .eq("id", studentId);
+          .update(updateData)
+          .eq("id", studentId)
+          .eq("organization_id", orgMember.organization_id)
+          .select()
+          .single();
 
       if (updateError) throw updateError;
 
-      setSuccessMsg(
-        "Student updated successfully!"
-      );
+      setStudent((prev) => ({
+        ...prev,
+        ...updatedStudent,
+      }));
 
-      setEditMode(false);
+      setSuccessMsg("Student updated successfully.");
     } catch (err) {
       console.error(err);
-
-      setErrorMsg(
-        err.message ||
-          "Failed to update student."
-      );
+      setErrorMsg(err.message || "Failed to update student.");
     } finally {
       setSaving(false);
     }
   }
 
   async function handleToggleStatus() {
-    if (isTeacher) {
-      setErrorMsg(
-        "Teachers cannot change student status."
-      );
+    if (role === "teacher") {
+      setErrorMsg("Teachers are not allowed to change student status.");
       return;
     }
 
-    const newStatus =
-      form.status === "active"
-        ? "inactive"
-        : "active";
+    if (!student) return;
 
     setSaving(true);
     setErrorMsg("");
+    setSuccessMsg("");
 
     try {
-      const { error: updateError } =
+      const newStatus =
+        student.status === "active" ? "inactive" : "active";
+
+      const { data: updatedStudent, error: updateError } =
         await supabase
           .from("students")
-          .update({
-            status: newStatus,
-          })
-          .eq("id", studentId);
+          .update({ status: newStatus })
+          .eq("id", studentId)
+          .select()
+          .single();
 
       if (updateError) throw updateError;
 
-      setForm((prev) => ({
+      setStudent((prev) => ({
+        ...prev,
+        ...updatedStudent,
+      }));
+
+      setFormData((prev) => ({
         ...prev,
         status: newStatus,
       }));
@@ -372,1167 +338,737 @@ export default function StudentDetailPage() {
       );
     } catch (err) {
       console.error(err);
-
       setErrorMsg(
-        err.message ||
-          "Failed to update status."
+        err.message || "Failed to change student status."
       );
     } finally {
       setSaving(false);
     }
-  }
-
-  const attendanceStats = (() => {
-    const present =
-      attendanceRecords.filter(
-        (r) => r.status === "present"
-      ).length;
-
-    const absent =
-      attendanceRecords.filter(
-        (r) => r.status === "absent"
-      ).length;
-
-    const leave =
-      attendanceRecords.filter(
-        (r) => r.status === "leave"
-      ).length;
-
-    const late =
-      attendanceRecords.filter(
-        (r) => r.status === "late"
-      ).length;
-
-    const total = attendanceRecords.length;
-
-    const percentage =
-      total > 0
-        ? Math.round(
-            ((present + late) / total) * 100
-          )
-        : null;
-
-    return {
-      present,
-      absent,
-      leave,
-      late,
-      total,
-      percentage,
-    };
-  })();
-
-  const feeTotals = feeRecords.reduce(
-    (acc, r) => {
-      const due = Number(
-        r.amount_due || 0
-      );
-
-      const paid = Number(
-        r.amount_paid || 0
-      );
-
-      acc.due += due;
-      acc.paid += paid;
-      acc.remaining += due - paid;
-
-      return acc;
-    },
-    {
-      due: 0,
-      paid: 0,
-      remaining: 0,
     }
-  );
-
-  function getBatchLabel() {
-    const batch = batches.find(
-      (b) => b.id === form.batch_id
-    );
-
-    if (!batch) return "";
-
-    if (
-      batch.start_time &&
-      batch.end_time
-    ) {
-      return `${batch.name} (${batch.start_time.slice(
-        0,
-        5
-      )} - ${batch.end_time.slice(0, 5)})`;
-    }
-
-    return batch.name;
-  }
-
-  if (loading) {
     return (
-      <div style={{ padding: 24 }}>
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (errorMsg && !form) {
-    return (
-      <div style={{ padding: 24 }}>
+    <div style={{ maxWidth: 800, margin: "0 auto", padding: 16 }}>
+      {loading ? (
+        <p>Loading student...</p>
+      ) : errorMsg ? (
         <div
           style={{
             background: "#fee2e2",
             color: "#991b1b",
             padding: 12,
             borderRadius: 8,
-          }}
-        >
-          {errorMsg}
-        </div>
-
-        <Link
-          href="/dashboard/students"
-          style={{
-            display: "inline-block",
-            marginTop: 16,
-          }}
-        >
-          ← Back to Students
-        </Link>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        maxWidth: 600,
-        margin: "0 auto",
-        padding: 16,
-      }}
-    >
-      <Link
-        href="/dashboard/students"
-        style={{
-          fontSize: 14,
-          color: "#2563eb",
-          textDecoration: "none",
-        }}
-      >
-        ← Back to Students
-      </Link>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: 12,
-          marginBottom: 16,
-          flexWrap: "wrap",
-          gap: 8,
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 700,
-              margin: 0,
-            }}
-          >
-            {form.name}
-          </h1>
-
-          {isTeacher && (
-            <div
-              style={{
-                marginTop: 5,
-                color: "#6b7280",
-                fontSize: 12,
-              }}
-            >
-              View only
-            </div>
-          )}
-        </div>
-
-        {!isTeacher && (
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <Link
-              href={`/dashboard/students/${studentId}/slip`}
-              style={{
-                padding: "8px 14px",
-                background: "#f3f4f6",
-                color: "#374151",
-                border:
-                  "1px solid #d1d5db",
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                textDecoration: "none",
-              }}
-            >
-              📄 Fee Slip
-            </Link>
-
-            {!editMode && (
-              <button
-                onClick={() =>
-                  setEditMode(true)
-                }
-                style={{
-                  padding: "8px 14px",
-                  background: "#2563eb",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
-              >
-                Edit
-              </button>
-            )}
-
-            <button
-              onClick={handleToggleStatus}
-              disabled={saving}
-              style={{
-                padding: "8px 14px",
-                background:
-                  form.status === "active"
-                    ? "#f3f4f6"
-                    : "#dcfce7",
-                color:
-                  form.status === "active"
-                    ? "#374151"
-                    : "#166534",
-                border:
-                  "1px solid #d1d5db",
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 600,
-              }}
-            >
-              {form.status === "active"
-                ? "Deactivate"
-                : "Activate"}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {errorMsg && (
-        <div
-          style={{
-            background: "#fee2e2",
             color: "#991b1b",
-            padding: 12,
-            borderRadius: 8,
-            marginBottom: 16,
           }}
         >
           {errorMsg}
         </div>
-      )}
-
-      {successMsg && (
-        <div
-          style={{
-            background: "#dcfce7",
-            color: "#166534",
-            padding: 12,
-            borderRadius: 8,
-            marginBottom: 16,
-          }}
-        >
-          {successMsg}
-        </div>
-      )}
-      {!editMode ? (
+      ) : !student ? (
+        <p>Student not found.</p>
+      ) : (
         <>
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
+              justifyContent: "space-between",
+              alignItems: "center",
               gap: 10,
-              marginBottom: 24,
+              marginBottom: 20,
+              flexWrap: "wrap",
             }}
           >
-            <InfoRow
-              label="Father Name"
-              value={form.father_name}
-            />
+            <div>
+              <h1
+                style={{
+                  fontSize: 22,
+                  fontWeight: 700,
+                  marginBottom: 4,
+                }}
+              >
+                {student.name}
+              </h1>
 
-            <InfoRow
-              label="Status"
-              value={form.status}
-            />
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#6b7280",
+                }}
+              >
+                Student Profile
+              </div>
+            </div>
 
-            <InfoRow
-              label="Program"
-              value={
-                programs.find(
-                  (p) =>
-                    p.id === form.program_id
-                )?.name
-              }
-            />
-
-            <InfoRow
-              label="Batch / Timing"
-              value={getBatchLabel()}
-            />
-
-            <InfoRow
-              label="Primary Teacher"
-              value={
-                teachers.find(
-                  (t) =>
-                    t.user_id ===
-                    form.primary_teacher_id
-                )?.full_name
-              }
-            />
-
-            {!isTeacher && (
-              <InfoRow
-                label="Monthly Fee"
-                value={
-                  form.monthly_fee
-                    ? `Rs ${form.monthly_fee}`
-                    : ""
-                }
-              />
-            )}
-
-            <InfoRow
-              label="WhatsApp"
-              value={form.whatsapp}
-            />
-
-            <InfoRow
-              label="Phone"
-              value={form.phone}
-            />
-
-            <InfoRow
-              label="Alternate Phone"
-              value={form.alternate_phone}
-            />
-
-            {!isTeacher && (
-              <>
-                <InfoRow
-                  label="Date of Birth"
-                  value={form.dob}
-                />
-
-                <InfoRow
-                  label="Admission Date"
-                  value={
-                    form.admission_date
-                  }
-                />
-
-                <InfoRow
-                  label="Address"
-                  value={form.address}
-                />
-
-                <InfoRow
-                  label="Notes"
-                  value={form.notes}
-                />
-              </>
-            )}
-          </div>
-
-          <h2
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              marginBottom: 12,
-            }}
-          >
-            Attendance History
-          </h2>
-
-          {attendanceLoading ? (
-            <p>Loading attendance...</p>
-          ) : attendanceRecords.length === 0 ? (
-            <p
+            <div
               style={{
-                color: "#6b7280",
-                marginBottom: 24,
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
               }}
             >
-              No attendance recorded yet.
-            </p>
-          ) : (
-            <>
+              <Link
+                href="/dashboard/students"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "#f3f4f6",
+                  color: "#111827",
+                  textDecoration: "none",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                ← Students
+              </Link>
+
+              {role !== "teacher" && (
+                <Link
+                  href={`/dashboard/students/${student.id}/slip`}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "#2563eb",
+                    color: "white",
+                    textDecoration: "none",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  Fee Slip
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {successMsg && (
+            <div
+              style={{
+                background: "#dcfce7",
+                color: "#166534",
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 16,
+              }}
+            >
+              {successMsg}
+            </div>
+          )}
+
+          {errorMsg && (
+            <div
+              style={{
+                background: "#fee2e2",
+                color: "#991b1b",
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 16,
+              }}
+            >
+              {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleSave}>
+            <div
+              style={{
+                background: "white",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 16,
+                marginBottom: 16,
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 17,
+                  fontWeight: 700,
+                  marginBottom: 14,
+                }}
+              >
+                Basic Information
+              </h2>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                }}
+              >
+                <Field
+                  label="Student Name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                  required
+                />
+
+                <Field
+                  label="Father Name"
+                  name="father_name"
+                  value={formData.father_name}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                />
+
+                <Field
+                  label="Date of Birth"
+                  name="dob"
+                  type="date"
+                  value={formData.dob}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                />
+
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  Gender
+
+                  <select
+                    name="gender"
+                    value={formData.gender}
+                    onChange={handleChange}
+                    disabled={role === "teacher"}
+                    style={{
+                      padding: 10,
+                      borderRadius: 8,
+                      border: "1px solid #d1d5db",
+                      fontSize: 15,
+                      background:
+                        role === "teacher"
+                          ? "#f3f4f6"
+                          : "white",
+                    }}
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </label>
+
+                <Field
+                  label="Admission Date"
+                  name="admission_date"
+                  type="date"
+                  value={formData.admission_date}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                />
+
+                <Field
+                  label="Photo URL"
+                  name="photo_url"
+                  value={formData.photo_url}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: "white",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 16,
+                marginBottom: 16,
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 17,
+                  fontWeight: 700,
+                  marginBottom: 14,
+                }}
+              >
+                Academic Information
+              </h2>
+
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginBottom: 12,
+                }}
+              >
+                Program
+
+                <select
+                  name="program_id"
+                  value={formData.program_id}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 15,
+                    background:
+                      role === "teacher"
+                        ? "#f3f4f6"
+                        : "white",
+                  }}
+                >
+                  <option value="">Select Program</option>
+
+                  {programs.map((program) => (
+                    <option
+                      key={program.id}
+                      value={program.id}
+                    >
+                      {program.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginBottom: 12,
+                }}
+              >
+                Batch / Timing
+
+                <select
+                  name="batch_id"
+                  value={formData.batch_id}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 15,
+                    background:
+                      role === "teacher"
+                        ? "#f3f4f6"
+                        : "white",
+                  }}
+                >
+                  <option value="">Select Batch / Timing</option>
+
+                  {batches.map((batch) => (
+                    <option
+                      key={batch.id}
+                      value={batch.id}
+                    >
+                      {batch.name}
+                      {batch.start_time && batch.end_time
+                        ? ` (${batch.start_time} - ${batch.end_time})`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                Primary Teacher
+
+                <select
+                  name="primary_teacher_id"
+                  value={formData.primary_teacher_id}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 15,
+                    background:
+                      role === "teacher"
+                        ? "#f3f4f6"
+                        : "white",
+                  }}
+                >
+                  <option value="">Select Teacher</option>
+
+                  {teachers.map((teacher) => (
+                    <option
+                      key={teacher.user_id}
+                      value={teacher.user_id}
+                    >
+                      {teacher.profiles?.full_name ||
+                        "Unnamed Teacher"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {role !== "teacher" && (
               <div
                 style={{
                   background: "white",
-                  border:
-                    "1px solid #e5e7eb",
+                  border: "1px solid #e5e7eb",
                   borderRadius: 10,
-                  padding: 14,
-                  marginBottom: 12,
-                  display: "flex",
-                  justifyContent:
-                    "space-between",
-                  alignItems: "center",
+                  padding: 16,
+                  marginBottom: 16,
                 }}
               >
-                <div
+                <h2
                   style={{
-                    display: "flex",
-                    gap: 10,
-                    fontSize: 12,
-                    color: "#6b7280",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span>
-                    Present:{" "}
-                    {attendanceStats.present}
-                  </span>
-
-                  <span>
-                    Absent:{" "}
-                    {attendanceStats.absent}
-                  </span>
-
-                  <span>
-                    Leave:{" "}
-                    {attendanceStats.leave}
-                  </span>
-
-                  <span>
-                    Late:{" "}
-                    {attendanceStats.late}
-                  </span>
-
-                  <span>
-                    Total:{" "}
-                    {attendanceStats.total}
-                  </span>
-                </div>
-
-                <span
-                  style={{
-                    fontSize: 15,
+                    fontSize: 17,
                     fontWeight: 700,
-                    color:
-                      attendanceStats.percentage ===
-                      null
-                        ? "#9ca3af"
-                        : attendanceStats.percentage >=
-                          75
-                        ? "#16a34a"
-                        : "#dc2626",
+                    marginBottom: 14,
                   }}
                 >
-                  {attendanceStats.percentage ===
-                  null
-                    ? "—"
-                    : `${attendanceStats.percentage}%`}
-                </span>
+                  Fee Information
+                </h2>
+
+                <Field
+                  label="Monthly Fee"
+                  name="monthly_fee"
+                  type="number"
+                  value={formData.monthly_fee}
+                  onChange={handleChange}
+                  min="0"
+                />
               </div>
+            )}
+
+            <div
+              style={{
+                background: "white",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 16,
+                marginBottom: 16,
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 17,
+                  fontWeight: 700,
+                  marginBottom: 14,
+                }}
+              >
+                Contact Information
+              </h2>
 
               <div
                 style={{
-                  display: "flex",
-                  flexDirection:
-                    "column",
-                  gap: 6,
-                  marginBottom: 24,
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
                 }}
               >
-                {attendanceRecords.map(
-                  (r, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: "flex",
-                        justifyContent:
-                          "space-between",
-                        alignItems:
-                          "center",
-                        padding:
-                          "8px 12px",
-                        background:
-                          "white",
-                        border:
-                          "1px solid #f3f4f6",
-                        borderRadius: 8,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 14,
-                        }}
-                      >
-                        {r.attendance_date}
-                      </span>
+                <Field
+                  label="WhatsApp"
+                  name="whatsapp"
+                  value={formData.whatsapp}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                />
 
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          padding:
-                            "3px 10px",
-                          borderRadius: 999,
-                          background:
-                            STATUS_COLORS[
-                              r.status
-                            ] + "22",
-                          color:
-                            STATUS_COLORS[
-                              r.status
-                            ],
-                        }}
-                      >
-                        {STATUS_LABELS[
-                          r.status
-                        ] || r.status}
-                      </span>
-                    </div>
-                  )
-                )}
+                <Field
+                  label="Phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                />
+
+                <Field
+                  label="Alternate Phone"
+                  name="alternate_phone"
+                  value={formData.alternate_phone}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                />
               </div>
-            </>
-          )}
 
-          {!isTeacher && (
-            <>
-              <h2
+              <label
                 style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  marginBottom: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginTop: 12,
                 }}
               >
-                Fee History
-              </h2>
+                Address
 
-              {feeLoading ? (
-                <p>
-                  Loading fee history...
-                </p>
-              ) : feeRecords.length ===
-                0 ? (
-                <p
+                <textarea
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  disabled={role === "teacher"}
+                  rows={3}
                   style={{
-                    color: "#6b7280",
-                    marginBottom: 24,
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 15,
+                    resize: "vertical",
+                    background:
+                      role === "teacher"
+                        ? "#f3f4f6"
+                        : "white",
                   }}
-                >
-                  No fee records yet.
-                </p>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      background:
-                        "white",
-                      border:
-                        "1px solid #e5e7eb",
-                      borderRadius: 10,
-                      padding: 14,
-                      marginBottom: 12,
-                      display: "flex",
-                      gap: 12,
-                      fontSize: 12,
-                      color: "#6b7280",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span>
-                      Total Monthly Fee:
-                      {" "}
-                      Rs {feeTotals.due}
-                    </span>
+                />
+              </label>
+            </div>
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                marginTop: 12,
+              }}
+            >
+              Notes
 
-                    <span>
-                      Total Paid:
-                      {" "}
-                      Rs {feeTotals.paid}
-                    </span>
-
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        color:
-                          feeTotals.remaining >
-                          0
-                            ? "#dc2626"
-                            : "#16a34a",
-                      }}
-                    >
-                      Total Remaining:
-                      {" "}
-                      Rs{" "}
-                      {feeTotals.remaining >
-                      0
-                        ? feeTotals.remaining
-                        : 0}
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection:
-                        "column",
-                      gap: 6,
-                      marginBottom: 20,
-                    }}
-                  >
-                    {feeRecords.map(
-                      (r) => {
-                        const due =
-                          Number(
-                            r.amount_due ||
-                              0
-                          );
-
-                        const paid =
-                          Number(
-                            r.amount_paid ||
-                              0
-                          );
-
-                        const remaining =
-                          due - paid;
-
-                        let status =
-                          "Unpaid";
-
-                        let color =
-                          "#dc2626";
-
-                        if (
-                          paid >= due &&
-                          due > 0
-                        ) {
-                          status =
-                            "Paid";
-                          color =
-                            "#16a34a";
-                        } else if (
-                          paid > 0
-                        ) {
-                          status =
-                            "Partial";
-                          color =
-                            "#d97706";
-                        }
-
-                        return (
-                          <div
-                            key={r.id}
-                            style={{
-                              padding:
-                                "10px 12px",
-                              background:
-                                "white",
-                              border:
-                                "1px solid #f3f4f6",
-                              borderRadius:
-                                8,
-                            }}
-                          >
-                            <div
-                              style={{
-                                display:
-                                  "flex",
-                                justifyContent:
-                                  "space-between",
-                                alignItems:
-                                  "center",
-                                marginBottom:
-                                  4,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight:
-                                    600,
-                                }}
-                              >
-                                {monthLabel(
-                                  r.billing_month
-                                )}
-                              </span>
-
-                              <span
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight:
-                                    600,
-                                  padding:
-                                    "3px 10px",
-                                  borderRadius:
-                                    999,
-                                  background:
-                                    color +
-                                    "22",
-                                  color:
-                                    color,
-                                }}
-                              >
-                                {status}
-                              </span>
-                            </div>
-
-                            <div
-                              style={{
-                                fontSize: 12,
-                                color:
-                                  "#6b7280",
-                              }}
-                            >
-                              Monthly Fee:
-                              {" "}
-                              Rs {due}
-                              {" · "}
-                              Paid:
-                              {" "}
-                              Rs {paid}
-                              {" · "}
-                              Remaining:
-                              {" "}
-                              Rs{" "}
-                              {remaining >
-                              0
-                                ? remaining
-                                : 0}
-                            </div>
-                          </div>
-                        );
-                      }
-                    )}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {!isTeacher && (
-            <>
-              <h2
+              <textarea
+                name="notes"
+                value={formData.notes}
+                onChange={handleChange}
+                disabled={role === "teacher"}
+                rows={4}
                 style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  marginBottom: 12,
+                  padding: 10,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 15,
+                  resize: "vertical",
+                  background:
+                    role === "teacher"
+                      ? "#f3f4f6"
+                      : "white",
+                }}
+              />
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                marginTop: 12,
+              }}
+            >
+              Status
+
+              <select
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                disabled={role === "teacher"}
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 15,
+                  background:
+                    role === "teacher"
+                      ? "#f3f4f6"
+                      : "white",
                 }}
               >
-                Payment History
-              </h2>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+          </div>
 
-              {feeLoading ? (
-                <p>
-                  Loading payments...
-                </p>
-              ) : payments.length ===
-                0 ? (
-                <p
-                  style={{
-                    color: "#6b7280",
-                    marginBottom: 24,
-                  }}
-                >
-                  No payments recorded
-                  yet.
-                </p>
-              ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection:
-                      "column",
-                    gap: 6,
-                    marginBottom: 24,
-                  }}
-                >
-                  {payments.map(
-                    (p) => (
-                      <div
-                        key={p.id}
-                        style={{
-                          display:
-                            "flex",
-                          justifyContent:
-                            "space-between",
-                          alignItems:
-                            "center",
-                          padding:
-                            "10px 12px",
-                          background:
-                            "white",
-                          border:
-                            "1px solid #f3f4f6",
-                          borderRadius: 8,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 14,
-                          }}
-                        >
-                          {p.payment_date}
-                        </span>
+          {role !== "teacher" && (
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              <button
+                type="submit"
+                disabled={saving}
+                style={{
+                  padding: "10px 16px",
+                  border: "none",
+                  borderRadius: 8,
+                  background: saving ? "#9ca3af" : "#16a34a",
+                  color: "white",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: saving ? "not-allowed" : "pointer",
+                }}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
 
-                        <span
-                          style={{
-                            fontSize: 14,
-                            fontWeight:
-                              600,
-                          }}
-                        >
-                          Rs {p.amount}
-                        </span>
-
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color:
-                              "#6b7280",
-                          }}
-                        >
-                          {
-                            p.payment_method
-                          }
-                        </span>
-                      </div>
-                    )
-                  )}
-                </div>
-              )}
-            </>
+              <button
+                type="button"
+                onClick={handleToggleStatus}
+                disabled={saving}
+                style={{
+                  padding: "10px 16px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 8,
+                  background: "white",
+                  color: "#111827",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: saving ? "not-allowed" : "pointer",
+                }}
+              >
+                {student.status === "active"
+                  ? "Mark Inactive"
+                  : "Mark Active"}
+              </button>
+            </div>
           )}
-        </>
-      ) : (
-        <form
-          onSubmit={handleSave}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <label>
-            Student Name *
-            <input
-              name="name"
-              value={form.name || ""}
-              onChange={handleChange}
-              required
-              style={inputStyle}
-            />
-          </label>
+        </form>
 
-          <label>
-            Father Name
-            <input
-              name="father_name"
-              value={
-                form.father_name || ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
-          <label>
-            Date of Birth
-            <input
-              type="date"
-              name="dob"
-              value={form.dob || ""}
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
-          <label>
-            Admission Date
-            <input
-              type="date"
-              name="admission_date"
-              value={
-                form.admission_date || ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
-          <label>
-            Gender
-            <select
-              name="gender"
-              value={
-                form.gender || "male"
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            >
-              <option value="male">
-                Male
-              </option>
-
-              <option value="female">
-                Female
-              </option>
-            </select>
-          </label>
-
-          <label>
-            Program
-            <select
-              name="program_id"
-              value={
-                form.program_id || ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            >
-              <option value="">
-                Select Program
-              </option>
-
-              {programs.map((p) => (
-                <option
-                  key={p.id}
-                  value={p.id}
-                >
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Batch / Timing
-            <select
-              name="batch_id"
-              value={
-                form.batch_id || ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            >
-              <option value="">
-                Select Batch
-              </option>
-
-              {batches.map((b) => (
-                <option
-                  key={b.id}
-                  value={b.id}
-                >
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Primary Teacher
-            <select
-              name="primary_teacher_id"
-              value={
-                form.primary_teacher_id ||
-                ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            >
-              <option value="">
-                Select Teacher
-              </option>
-
-              {teachers.map((t) => (
-                <option
-                  key={t.user_id}
-                  value={t.user_id}
-                >
-                  {t.full_name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Monthly Fee
-            <input
-              type="number"
-              name="monthly_fee"
-              value={
-                form.monthly_fee || ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
-          <label>
-            WhatsApp
-            <input
-              name="whatsapp"
-              value={
-                form.whatsapp || ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
-          <label>
-            Phone
-            <input
-              name="phone"
-              value={form.phone || ""}
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
-          <label>
-            Alternate Phone
-            <input
-              name="alternate_phone"
-              value={
-                form.alternate_phone ||
-                ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
-          <label>
-            Address
-            <textarea
-              name="address"
-              value={
-                form.address || ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
-          <label>
-            Notes
-            <textarea
-              name="notes"
-              value={
-                form.notes || ""
-              }
-              onChange={handleChange}
-              style={inputStyle}
-            />
-          </label>
-
+        {role !== "teacher" && (
           <div
             style={{
-              display: "flex",
-              gap: 8,
-              marginTop: 8,
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              padding: 16,
+              marginBottom: 16,
             }}
           >
-            <button
-              type="submit"
-              disabled={saving}
+            <h2
               style={{
-                flex: 1,
-                padding: "12px 16px",
-                background: "#16a34a",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 16,
-                fontWeight: 600,
+                fontSize: 17,
+                fontWeight: 700,
+                marginBottom: 12,
               }}
             >
-              {saving
-                ? "Saving..."
-                : "Save Changes"}
-            </button>
+              Student Summary
+            </h2>
 
-            <button
-              type="button"
-              onClick={() =>
-                setEditMode(false)
-              }
+            <div
               style={{
-                padding: "12px 16px",
-                background: "#f3f4f6",
-                color: "#374151",
-                border:
-                  "1px solid #d1d5db",
-                borderRadius: 8,
-                fontSize: 16,
-                fontWeight: 600,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+                fontSize: 13,
               }}
             >
-              Cancel
-            </button>
+              <div>
+                <span style={{ color: "#6b7280" }}>
+                  Program
+                </span>
+                <div style={{ fontWeight: 600 }}>
+                  {student.programs?.name || "No Program"}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: "#6b7280" }}>
+                  Batch
+                </span>
+                <div style={{ fontWeight: 600 }}>
+                  {student.batches?.name || "No Batch"}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: "#6b7280" }}>
+                  Monthly Fee
+                </span>
+                <div style={{ fontWeight: 600 }}>
+                  Rs {student.monthly_fee || 0}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: "#6b7280" }}>
+                  Status
+                </span>
+                <div style={{ fontWeight: 600 }}>
+                  {student.status}
+                </div>
+              </div>
+            </div>
           </div>
-        </form>
+        )}
+
+        {role !== "teacher" && (
+          <div
+            style={{
+              background: "#f9fafb",
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              padding: 14,
+              fontSize: 13,
+              color: "#6b7280",
+            }}
+          >
+            Student ID: {student.id}
+          </div>
+        )}
       )}
     </div>
   );
 }
 
-function InfoRow({ label, value }) {
+function Field({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  disabled = false,
+  required = false,
+  min,
+}) {
   return (
-    <div
+    <label
       style={{
         display: "flex",
-        justifyContent:
-          "space-between",
-        padding: "10px 0",
-        borderBottom:
-          "1px solid #f3f4f6",
+        flexDirection: "column",
+        gap: 6,
+        fontSize: 13,
+        fontWeight: 600,
       }}
     >
-      <span
-        style={{
-          color: "#6b7280",
-          fontSize: 14,
-        }}
-      >
-        {label}
-      </span>
+      {label}
 
-      <span
+      <input
+        type={type}
+        name={name}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        required={required}
+        min={min}
         style={{
-          fontSize: 14,
-          fontWeight: 500,
-          textAlign: "right",
-          maxWidth: "60%",
+          padding: 10,
+          borderRadius: 8,
+          border: "1px solid #d1d5db",
+          fontSize: 15,
+          background: disabled ? "#f3f4f6" : "white",
         }}
-      >
-        {value || "—"}
-      </span>
-    </div>
+      />
+    </label>
   );
-}
-
-const inputStyle = {
-  width: "100%",
-  padding: 10,
-  marginTop: 4,
-  borderRadius: 8,
-  border: "1px solid #d1d5db",
-  fontSize: 16,
-};
+                  }
