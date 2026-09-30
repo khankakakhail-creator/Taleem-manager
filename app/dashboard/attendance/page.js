@@ -12,23 +12,26 @@ const STATUS = [
 ];
 
 const REASONS = [
-  "بیماری",
-  "سفر",
-  "گھر کا کام",
-  "خوشی/غم",
-  "موسم",
-  "بغیر اطلاع",
-  "ذاتی کام",
-  "Custom",
+  "Illness",
+  "Medical Appointment",
+  "Travel",
+  "Family Work",
+  "Personal Work",
+  "Family Event",
+  "Bereavement",
+  "Emergency",
+  "Weather",
+  "No Notice",
+  "Other / Custom",
 ];
 
 const LATE_TIMES = [
-  "5 منٹ",
-  "10 منٹ",
-  "15 منٹ",
-  "30 منٹ",
-  "1 گھنٹہ",
-  "2 گھنٹے",
+  "5 minutes",
+  "10 minutes",
+  "15 minutes",
+  "30 minutes",
+  "1 hour",
+  "2 hours",
   "Custom",
 ];
 
@@ -68,6 +71,7 @@ export default function AttendancePage() {
 
   async function loadStudents() {
     setLoading(true);
+    setError("");
 
     const { data, error } = await supabase
       .from("students")
@@ -87,6 +91,8 @@ export default function AttendancePage() {
   }
 
   async function loadAttendance() {
+    setError("");
+
     const { data, error } = await supabase
       .from("attendance")
       .select("student_id, status, notes")
@@ -107,40 +113,26 @@ export default function AttendancePage() {
         customReason: "",
         late: "",
         customLate: "",
-        note: "",
       };
 
       const text = row.notes || "";
 
-      if (
-        row.status === "absent" ||
-        row.status === "leave"
-      ) {
+      if (row.status === "absent" || row.status === "leave") {
         if (text.startsWith("Reason: ")) {
-          const parts = text
-            .replace("Reason: ", "")
-            .split(" | Note: ");
-
-          const reason = parts[0];
+          const reason = text.replace("Reason: ", "").trim();
 
           if (REASONS.includes(reason)) {
             item.reason = reason;
           } else {
-            item.reason = "Custom";
+            item.reason = "Other / Custom";
             item.customReason = reason;
           }
-
-          item.note = parts[1] || "";
-        } else {
-          item.note = text;
         }
-      } else if (row.status === "late") {
-        if (text.startsWith("Late: ")) {
-          const parts = text
-            .replace("Late: ", "")
-            .split(" | Note: ");
+      }
 
-          const late = parts[0];
+      if (row.status === "late") {
+        if (text.startsWith("Late: ")) {
+          const late = text.replace("Late: ", "").trim();
 
           if (LATE_TIMES.includes(late)) {
             item.late = late;
@@ -148,13 +140,7 @@ export default function AttendancePage() {
             item.late = "Custom";
             item.customLate = late;
           }
-
-          item.note = parts[1] || "";
-        } else {
-          item.note = text;
         }
-      } else {
-        item.note = text;
       }
 
       next[row.student_id] = item;
@@ -179,46 +165,68 @@ export default function AttendancePage() {
       [studentId]: {
         ...(old[studentId] || {}),
         status,
+
         reason:
           status === "absent" || status === "leave"
             ? old[studentId]?.reason || ""
             : "",
+
         customReason:
           status === "absent" || status === "leave"
             ? old[studentId]?.customReason || ""
             : "",
+
         late:
           status === "late"
             ? old[studentId]?.late || ""
             : "",
+
         customLate:
           status === "late"
             ? old[studentId]?.customLate || ""
             : "",
-        note: old[studentId]?.note || "",
       },
     }));
+
+    setMessage("");
+    setError("");
+  }
+
+  function markAllPresent() {
+    setRecords((old) => {
+      const next = { ...old };
+
+      students.forEach((student) => {
+        next[student.id] = {
+          status: "present",
+          reason: "",
+          customReason: "",
+          late: "",
+          customLate: "",
+        };
+      });
+
+      return next;
+    });
+
+    setMessage(
+      "All students marked as Present. Review exceptions, then save."
+    );
+    setError("");
   }
 
   function buildNote(item) {
     if (!item) return null;
 
-    const extra = (item.note || "").trim();
-
-    if (
-      item.status === "absent" ||
-      item.status === "leave"
-    ) {
+    if (item.status === "absent" || item.status === "leave") {
       const reason =
-        item.reason === "Custom"
+        item.reason === "Other / Custom"
           ? (item.customReason || "").trim()
           : item.reason;
 
       if (!reason) return null;
 
-      return extra
-        ? `Reason: ${reason} | Note: ${extra}`
-        : `Reason: ${reason}`;
+      return "Reason: " + reason;
     }
 
     if (item.status === "late") {
@@ -229,12 +237,10 @@ export default function AttendancePage() {
 
       if (!late) return null;
 
-      return extra
-        ? `Late: ${late} | Note: ${extra}`
-        : `Late: ${late}`;
+      return "Late: " + late;
     }
 
-    return extra || null;
+    return null;
   }
 
   async function saveAttendance() {
@@ -304,7 +310,9 @@ export default function AttendancePage() {
 
       await loadAttendance();
     } catch (err) {
-      setError(err.message || "Failed to save attendance.");
+      setError(
+        err.message || "Failed to save attendance."
+      );
     }
 
     setSaving(false);
@@ -337,6 +345,8 @@ export default function AttendancePage() {
         Attendance
       </h1>
 
+      {/* Date + Mark All Present */}
+
       <div
         style={{
           border: "1px solid #ddd",
@@ -366,7 +376,28 @@ export default function AttendancePage() {
             borderRadius: 8,
           }}
         />
+
+        <button
+          type="button"
+          onClick={markAllPresent}
+          disabled={students.length === 0}
+          style={{
+            width: "100%",
+            marginTop: 10,
+            padding: 12,
+            border: "1px solid #15803d",
+            borderRadius: 8,
+            background: "#f0fdf4",
+            color: "#166534",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          ✓ Mark All Present
+        </button>
       </div>
+
+      {/* Error */}
 
       {error && (
         <div
@@ -381,6 +412,8 @@ export default function AttendancePage() {
           {error}
         </div>
       )}
+
+      {/* Success */}
 
       {message && (
         <div
@@ -414,6 +447,8 @@ export default function AttendancePage() {
                   marginBottom: 12,
                 }}
               >
+                {/* Student */}
+
                 <div
                   style={{
                     fontSize: 17,
@@ -436,6 +471,8 @@ export default function AttendancePage() {
                   </div>
                 )}
 
+                {/* Status */}
+
                 <div
                   style={{
                     display: "flex",
@@ -448,7 +485,10 @@ export default function AttendancePage() {
                       key={value}
                       type="button"
                       onClick={() =>
-                        changeStatus(student.id, value)
+                        changeStatus(
+                          student.id,
+                          value
+                        )
                       }
                       style={{
                         padding: "8px 12px",
@@ -470,10 +510,11 @@ export default function AttendancePage() {
                   ))}
                 </div>
 
+                {/* Absent / Leave */}
+
                 {(status === "absent" ||
                   status === "leave") && (
                   <div
-                    dir="rtl"
                     style={{
                       marginTop: 12,
                       padding: 12,
@@ -487,7 +528,7 @@ export default function AttendancePage() {
                         marginBottom: 8,
                       }}
                     >
-                      وجہ منتخب کریں
+                      Reason
                     </div>
 
                     <div
@@ -527,10 +568,13 @@ export default function AttendancePage() {
                       ))}
                     </div>
 
-                    {item.reason === "Custom" && (
+                    {item.reason ===
+                      "Other / Custom" && (
                       <input
                         type="text"
-                        value={item.customReason || ""}
+                        value={
+                          item.customReason || ""
+                        }
                         onChange={(e) =>
                           updateRecord(
                             student.id,
@@ -538,7 +582,7 @@ export default function AttendancePage() {
                             e.target.value
                           )
                         }
-                        placeholder="اپنی وجہ لکھیں"
+                        placeholder="Enter custom reason"
                         style={{
                           width: "100%",
                           marginTop: 8,
@@ -551,9 +595,10 @@ export default function AttendancePage() {
                   </div>
                 )}
 
+                {/* Late */}
+
                 {status === "late" && (
                   <div
-                    dir="rtl"
                     style={{
                       marginTop: 12,
                       padding: 12,
@@ -567,7 +612,7 @@ export default function AttendancePage() {
                         marginBottom: 8,
                       }}
                     >
-                      کتنی دیر سے آیا؟
+                      Late Duration
                     </div>
 
                     <div
@@ -610,7 +655,9 @@ export default function AttendancePage() {
                     {item.late === "Custom" && (
                       <input
                         type="text"
-                        value={item.customLate || ""}
+                        value={
+                          item.customLate || ""
+                        }
                         onChange={(e) =>
                           updateRecord(
                             student.id,
@@ -618,7 +665,7 @@ export default function AttendancePage() {
                             e.target.value
                           )
                         }
-                        placeholder="مثلاً 45 منٹ"
+                        placeholder="Enter custom duration"
                         style={{
                           width: "100%",
                           marginTop: 8,
@@ -630,32 +677,11 @@ export default function AttendancePage() {
                     )}
                   </div>
                 )}
-
-                {status && (
-                  <input
-                    type="text"
-                    dir="rtl"
-                    value={item.note || ""}
-                    onChange={(e) =>
-                      updateRecord(
-                        student.id,
-                        "note",
-                        e.target.value
-                      )
-                    }
-                    placeholder="اضافی نوٹ (اختیاری)"
-                    style={{
-                      width: "100%",
-                      marginTop: 10,
-                      padding: 9,
-                      border: "1px solid #ccc",
-                      borderRadius: 7,
-                    }}
-                  />
-                )}
               </div>
             );
           })}
+
+          {/* Save */}
 
           <button
             type="button"
