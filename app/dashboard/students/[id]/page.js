@@ -21,6 +21,7 @@ const STATUS_COLORS = {
 
 function monthLabel(billingMonthDate) {
   const d = new Date(billingMonthDate);
+
   return d.toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
@@ -71,7 +72,10 @@ export default function StudentDetailPage() {
       } = await supabase.auth.getUser();
 
       if (userError) throw userError;
-      if (!user) throw new Error("User not logged in.");
+
+      if (!user) {
+        throw new Error("User not logged in.");
+      }
 
       const { data: orgMember, error: orgError } = await supabase
         .from("organization_members")
@@ -80,6 +84,7 @@ export default function StudentDetailPage() {
         .maybeSingle();
 
       if (orgError) throw orgError;
+
       if (!orgMember) {
         throw new Error("No organization found for this user.");
       }
@@ -97,7 +102,10 @@ export default function StudentDetailPage() {
         .maybeSingle();
 
       if (studentError) throw studentError;
-      if (!studentData) throw new Error("Student not found.");
+
+      if (!studentData) {
+        throw new Error("Student not found.");
+      }
 
       setForm(studentData);
 
@@ -124,7 +132,9 @@ export default function StudentDetailPage() {
         .select("user_id, role")
         .eq("organization_id", currentOrgId);
 
-      const memberIds = (membersData || []).map((m) => m.user_id);
+      const memberIds = (membersData || []).map(
+        (m) => m.user_id
+      );
 
       let teachersList = [];
 
@@ -143,7 +153,8 @@ export default function StudentDetailPage() {
 
             return {
               user_id: m.user_id,
-              full_name: profile?.full_name || "Unnamed Teacher",
+              full_name:
+                profile?.full_name || "Unnamed Teacher",
             };
           });
       }
@@ -151,7 +162,9 @@ export default function StudentDetailPage() {
       setTeachers(teachersList);
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || "Failed to load student.");
+      setErrorMsg(
+        err.message || "Failed to load student."
+      );
     } finally {
       setLoading(false);
     }
@@ -163,9 +176,13 @@ export default function StudentDetailPage() {
     try {
       const { data, error } = await supabase
         .from("attendance")
-        .select("attendance_date, status, notes")
+        .select(
+          "attendance_date, status, notes"
+        )
         .eq("student_id", studentId)
-        .order("attendance_date", { ascending: false });
+        .order("attendance_date", {
+          ascending: false,
+        });
 
       if (error) throw error;
 
@@ -199,21 +216,33 @@ export default function StudentDetailPage() {
         return;
       }
 
-      const { data: feeData, error: feeError } = await supabase
-        .from("fee_records")
-        .select("id, billing_month, amount_due, amount_paid")
-        .eq("student_id", studentId)
-        .order("billing_month", { ascending: false });
+      const { data: feeData, error: feeError } =
+        await supabase
+          .from("fee_records")
+          .select(
+            "id, billing_month, amount_due, amount_paid"
+          )
+          .eq("student_id", studentId)
+          .order("billing_month", {
+            ascending: false,
+          });
 
       if (feeError) throw feeError;
 
       setFeeRecords(feeData || []);
 
-      const { data: paymentData, error: paymentError } = await supabase
+      const {
+        data: paymentData,
+        error: paymentError,
+      } = await supabase
         .from("payments")
-        .select("id, amount, payment_date, payment_method")
+        .select(
+          "id, amount, payment_date, payment_method"
+        )
         .eq("student_id", studentId)
-        .order("payment_date", { ascending: false });
+        .order("payment_date", {
+          ascending: false,
+        });
 
       if (paymentError) throw paymentError;
 
@@ -238,7 +267,9 @@ export default function StudentDetailPage() {
     e.preventDefault();
 
     if (isTeacher) {
-      setErrorMsg("Teachers cannot edit student profiles.");
+      setErrorMsg(
+        "Teachers cannot edit student profiles."
+      );
       return;
     }
 
@@ -249,37 +280,56 @@ export default function StudentDetailPage() {
     try {
       const payload = {
         name: form.name?.trim(),
-        father_name: form.father_name?.trim() || null,
-        photo_url: form.photo_url?.trim() || null,
+        father_name:
+          form.father_name?.trim() || null,
+        photo_url:
+          form.photo_url?.trim() || null,
         dob: form.dob || null,
-        admission_date: form.admission_date || null,
+        admission_date:
+          form.admission_date || null,
         gender: form.gender || null,
-        program_id: form.program_id || null,
-        batch_id: form.batch_id || null,
-        primary_teacher_id: form.primary_teacher_id || null,
+        program_id:
+          form.program_id || null,
+        batch_id:
+          form.batch_id || null,
+        primary_teacher_id:
+          form.primary_teacher_id || null,
         monthly_fee: form.monthly_fee
           ? Number(form.monthly_fee)
           : null,
-        whatsapp: form.whatsapp?.trim() || null,
-        phone: form.phone?.trim() || null,
-        alternate_phone: form.alternate_phone?.trim() || null,
-        address: form.address?.trim() || null,
-        notes: form.notes?.trim() || null,
+        whatsapp:
+          form.whatsapp?.trim() || null,
+        phone:
+          form.phone?.trim() || null,
+        alternate_phone:
+          form.alternate_phone?.trim() || null,
+        address:
+          form.address?.trim() || null,
+        notes:
+          form.notes?.trim() || null,
         status: form.status || "active",
       };
 
-      const { error: updateError } = await supabase
-        .from("students")
-        .update(payload)
-        .eq("id", studentId);
+      const { error: updateError } =
+        await supabase
+          .from("students")
+          .update(payload)
+          .eq("id", studentId);
 
       if (updateError) throw updateError;
 
-      setSuccessMsg("Student updated successfully!");
+      setSuccessMsg(
+        "Student updated successfully!"
+      );
+
       setEditMode(false);
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || "Failed to update student.");
+
+      setErrorMsg(
+        err.message ||
+          "Failed to update student."
+      );
     } finally {
       setSaving(false);
     }
@@ -287,21 +337,28 @@ export default function StudentDetailPage() {
 
   async function handleToggleStatus() {
     if (isTeacher) {
-      setErrorMsg("Teachers cannot change student status.");
+      setErrorMsg(
+        "Teachers cannot change student status."
+      );
       return;
     }
 
     const newStatus =
-      form.status === "active" ? "inactive" : "active";
+      form.status === "active"
+        ? "inactive"
+        : "active";
 
     setSaving(true);
     setErrorMsg("");
 
     try {
-      const { error: updateError } = await supabase
-        .from("students")
-        .update({ status: newStatus })
-        .eq("id", studentId);
+      const { error: updateError } =
+        await supabase
+          .from("students")
+          .update({
+            status: newStatus,
+          })
+          .eq("id", studentId);
 
       if (updateError) throw updateError;
 
@@ -310,37 +367,49 @@ export default function StudentDetailPage() {
         status: newStatus,
       }));
 
-      setSuccessMsg(`Student marked as ${newStatus}.`);
+      setSuccessMsg(
+        `Student marked as ${newStatus}.`
+      );
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || "Failed to update status.");
+
+      setErrorMsg(
+        err.message ||
+          "Failed to update status."
+      );
     } finally {
       setSaving(false);
     }
   }
 
   const attendanceStats = (() => {
-    const present = attendanceRecords.filter(
-      (r) => r.status === "present"
-    ).length;
+    const present =
+      attendanceRecords.filter(
+        (r) => r.status === "present"
+      ).length;
 
-    const absent = attendanceRecords.filter(
-      (r) => r.status === "absent"
-    ).length;
+    const absent =
+      attendanceRecords.filter(
+        (r) => r.status === "absent"
+      ).length;
 
-    const leave = attendanceRecords.filter(
-      (r) => r.status === "leave"
-    ).length;
+    const leave =
+      attendanceRecords.filter(
+        (r) => r.status === "leave"
+      ).length;
 
-    const late = attendanceRecords.filter(
-      (r) => r.status === "late"
-    ).length;
+    const late =
+      attendanceRecords.filter(
+        (r) => r.status === "late"
+      ).length;
 
     const total = attendanceRecords.length;
 
     const percentage =
       total > 0
-        ? Math.round(((present + late) / total) * 100)
+        ? Math.round(
+            ((present + late) / total) * 100
+          )
         : null;
 
     return {
@@ -355,8 +424,13 @@ export default function StudentDetailPage() {
 
   const feeTotals = feeRecords.reduce(
     (acc, r) => {
-      const due = Number(r.amount_due || 0);
-      const paid = Number(r.amount_paid || 0);
+      const due = Number(
+        r.amount_due || 0
+      );
+
+      const paid = Number(
+        r.amount_paid || 0
+      );
 
       acc.due += due;
       acc.paid += paid;
@@ -378,7 +452,10 @@ export default function StudentDetailPage() {
 
     if (!batch) return "";
 
-    if (batch.start_time && batch.end_time) {
+    if (
+      batch.start_time &&
+      batch.end_time
+    ) {
       return `${batch.name} (${batch.start_time.slice(
         0,
         5
@@ -491,7 +568,8 @@ export default function StudentDetailPage() {
                 padding: "8px 14px",
                 background: "#f3f4f6",
                 color: "#374151",
-                border: "1px solid #d1d5db",
+                border:
+                  "1px solid #d1d5db",
                 borderRadius: 8,
                 fontSize: 14,
                 fontWeight: 600,
@@ -503,7 +581,9 @@ export default function StudentDetailPage() {
 
             {!editMode && (
               <button
-                onClick={() => setEditMode(true)}
+                onClick={() =>
+                  setEditMode(true)
+                }
                 style={{
                   padding: "8px 14px",
                   background: "#2563eb",
@@ -531,7 +611,8 @@ export default function StudentDetailPage() {
                   form.status === "active"
                     ? "#374151"
                     : "#166534",
-                border: "1px solid #d1d5db",
+                border:
+                  "1px solid #d1d5db",
                 borderRadius: 8,
                 fontSize: 14,
                 fontWeight: 600,
@@ -572,7 +653,6 @@ export default function StudentDetailPage() {
           {successMsg}
         </div>
       )}
-
       {!editMode ? (
         <>
           <div
@@ -597,7 +677,8 @@ export default function StudentDetailPage() {
               label="Program"
               value={
                 programs.find(
-                  (p) => p.id === form.program_id
+                  (p) =>
+                    p.id === form.program_id
                 )?.name
               }
             />
@@ -612,7 +693,8 @@ export default function StudentDetailPage() {
               value={
                 teachers.find(
                   (t) =>
-                    t.user_id === form.primary_teacher_id
+                    t.user_id ===
+                    form.primary_teacher_id
                 )?.full_name
               }
             />
@@ -652,7 +734,9 @@ export default function StudentDetailPage() {
 
                 <InfoRow
                   label="Admission Date"
-                  value={form.admission_date}
+                  value={
+                    form.admission_date
+                  }
                 />
 
                 <InfoRow
@@ -694,12 +778,14 @@ export default function StudentDetailPage() {
               <div
                 style={{
                   background: "white",
-                  border: "1px solid #e5e7eb",
+                  border:
+                    "1px solid #e5e7eb",
                   borderRadius: 10,
                   padding: 14,
                   marginBottom: 12,
                   display: "flex",
-                  justifyContent: "space-between",
+                  justifyContent:
+                    "space-between",
                   alignItems: "center",
                 }}
               >
@@ -713,23 +799,28 @@ export default function StudentDetailPage() {
                   }}
                 >
                   <span>
-                    Present: {attendanceStats.present}
+                    Present:{" "}
+                    {attendanceStats.present}
                   </span>
 
                   <span>
-                    Absent: {attendanceStats.absent}
+                    Absent:{" "}
+                    {attendanceStats.absent}
                   </span>
 
                   <span>
-                    Leave: {attendanceStats.leave}
+                    Leave:{" "}
+                    {attendanceStats.leave}
                   </span>
 
                   <span>
-                    Late: {attendanceStats.late}
+                    Late:{" "}
+                    {attendanceStats.late}
                   </span>
 
                   <span>
-                    Total: {attendanceStats.total}
+                    Total:{" "}
+                    {attendanceStats.total}
                   </span>
                 </div>
 
@@ -738,14 +829,17 @@ export default function StudentDetailPage() {
                     fontSize: 15,
                     fontWeight: 700,
                     color:
-                      attendanceStats.percentage === null
+                      attendanceStats.percentage ===
+                      null
                         ? "#9ca3af"
-                        : attendanceStats.percentage >= 75
+                        : attendanceStats.percentage >=
+                          75
                         ? "#16a34a"
                         : "#dc2626",
                   }}
                 >
-                  {attendanceStats.percentage === null
+                  {attendanceStats.percentage ===
+                  null
                     ? "—"
                     : `${attendanceStats.percentage}%`}
                 </span>
@@ -754,43 +848,63 @@ export default function StudentDetailPage() {
               <div
                 style={{
                   display: "flex",
-                  flexDirection: "column",
+                  flexDirection:
+                    "column",
                   gap: 6,
                   marginBottom: 24,
                 }}
               >
-                {attendanceRecords.map((r, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "8px 12px",
-                      background: "white",
-                      border: "1px solid #f3f4f6",
-                      borderRadius: 8,
-                    }}
-                  >
-                    <span style={{ fontSize: 14 }}>
-                      {r.attendance_date}
-                    </span>
-
-                    <span
+                {attendanceRecords.map(
+                  (r, idx) => (
+                    <div
+                      key={idx}
                       style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        padding: "3px 10px",
-                        borderRadius: 999,
+                        display: "flex",
+                        justifyContent:
+                          "space-between",
+                        alignItems:
+                          "center",
+                        padding:
+                          "8px 12px",
                         background:
-                          STATUS_COLORS[r.status] + "22",
-                        color: STATUS_COLORS[r.status],
+                          "white",
+                        border:
+                          "1px solid #f3f4f6",
+                        borderRadius: 8,
                       }}
                     >
-                      {STATUS_LABELS[r.status] || r.status}
-                    </span>
-                  </div>
-                ))}
+                      <span
+                        style={{
+                          fontSize: 14,
+                        }}
+                      >
+                        {r.attendance_date}
+                      </span>
+
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          padding:
+                            "3px 10px",
+                          borderRadius: 999,
+                          background:
+                            STATUS_COLORS[
+                              r.status
+                            ] + "22",
+                          color:
+                            STATUS_COLORS[
+                              r.status
+                            ],
+                        }}
+                      >
+                        {STATUS_LABELS[
+                          r.status
+                        ] || r.status}
+                      </span>
+                    </div>
+                  )
+                )}
               </div>
             </>
           )}
@@ -808,204 +922,303 @@ export default function StudentDetailPage() {
               </h2>
 
               {feeLoading ? (
-                     <p>Loading fee history...</p>
-            ) : feeRecords.length === 0 ? (
-              <p style={{ color: "#6b7280", marginBottom: 24 }}>
-                No fee records yet.
-              </p>
-            ) : (
-              <>
-                <div
+                <p>
+                  Loading fee history...
+                </p>
+              ) : feeRecords.length ===
+                0 ? (
+                <p
                   style={{
-                    background: "white",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 10,
-                    padding: 14,
-                    marginBottom: 12,
-                    display: "flex",
-                    gap: 12,
-                    fontSize: 12,
                     color: "#6b7280",
-                    flexWrap: "wrap",
+                    marginBottom: 24,
                   }}
                 >
-                  <span>Total Monthly Fee: Rs {feeTotals.due}</span>
-
-                  <span>Total Paid: Rs {feeTotals.paid}</span>
-
-                  <span
+                  No fee records yet.
+                </p>
+              ) : (
+                <>
+                  <div
                     style={{
-                      fontWeight: 700,
-                      color:
-                        feeTotals.remaining > 0
-                          ? "#dc2626"
-                          : "#16a34a",
+                      background:
+                        "white",
+                      border:
+                        "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: 14,
+                      marginBottom: 12,
+                      display: "flex",
+                      gap: 12,
+                      fontSize: 12,
+                      color: "#6b7280",
+                      flexWrap: "wrap",
                     }}
                   >
-                    Total Remaining: Rs{" "}
-                    {feeTotals.remaining > 0
-                      ? feeTotals.remaining
-                      : 0}
-                  </span>
-                </div>
+                    <span>
+                      Total Monthly Fee:
+                      {" "}
+                      Rs {feeTotals.due}
+                    </span>
 
+                    <span>
+                      Total Paid:
+                      {" "}
+                      Rs {feeTotals.paid}
+                    </span>
+
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        color:
+                          feeTotals.remaining >
+                          0
+                            ? "#dc2626"
+                            : "#16a34a",
+                      }}
+                    >
+                      Total Remaining:
+                      {" "}
+                      Rs{" "}
+                      {feeTotals.remaining >
+                      0
+                        ? feeTotals.remaining
+                        : 0}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection:
+                        "column",
+                      gap: 6,
+                      marginBottom: 20,
+                    }}
+                  >
+                    {feeRecords.map(
+                      (r) => {
+                        const due =
+                          Number(
+                            r.amount_due ||
+                              0
+                          );
+
+                        const paid =
+                          Number(
+                            r.amount_paid ||
+                              0
+                          );
+
+                        const remaining =
+                          due - paid;
+
+                        let status =
+                          "Unpaid";
+
+                        let color =
+                          "#dc2626";
+
+                        if (
+                          paid >= due &&
+                          due > 0
+                        ) {
+                          status =
+                            "Paid";
+                          color =
+                            "#16a34a";
+                        } else if (
+                          paid > 0
+                        ) {
+                          status =
+                            "Partial";
+                          color =
+                            "#d97706";
+                        }
+
+                        return (
+                          <div
+                            key={r.id}
+                            style={{
+                              padding:
+                                "10px 12px",
+                              background:
+                                "white",
+                              border:
+                                "1px solid #f3f4f6",
+                              borderRadius:
+                                8,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display:
+                                  "flex",
+                                justifyContent:
+                                  "space-between",
+                                alignItems:
+                                  "center",
+                                marginBottom:
+                                  4,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 14,
+                                  fontWeight:
+                                    600,
+                                }}
+                              >
+                                {monthLabel(
+                                  r.billing_month
+                                )}
+                              </span>
+
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight:
+                                    600,
+                                  padding:
+                                    "3px 10px",
+                                  borderRadius:
+                                    999,
+                                  background:
+                                    color +
+                                    "22",
+                                  color:
+                                    color,
+                                }}
+                              >
+                                {status}
+                              </span>
+                            </div>
+
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color:
+                                  "#6b7280",
+                              }}
+                            >
+                              Monthly Fee:
+                              {" "}
+                              Rs {due}
+                              {" · "}
+                              Paid:
+                              {" "}
+                              Rs {paid}
+                              {" · "}
+                              Remaining:
+                              {" "}
+                              Rs{" "}
+                              {remaining >
+                              0
+                                ? remaining
+                                : 0}
+                            </div>
+                          </div>
+                        );
+                      }
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {!isTeacher && (
+            <>
+              <h2
+                style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  marginBottom: 12,
+                }}
+              >
+                Payment History
+              </h2>
+
+              {feeLoading ? (
+                <p>
+                  Loading payments...
+                </p>
+              ) : payments.length ===
+                0 ? (
+                <p
+                  style={{
+                    color: "#6b7280",
+                    marginBottom: 24,
+                  }}
+                >
+                  No payments recorded
+                  yet.
+                </p>
+              ) : (
                 <div
                   style={{
                     display: "flex",
-                    flexDirection: "column",
+                    flexDirection:
+                      "column",
                     gap: 6,
-                    marginBottom: 20,
+                    marginBottom: 24,
                   }}
                 >
-                  {feeRecords.map((r) => {
-                    const due = Number(r.amount_due || 0);
-                    const paid = Number(r.amount_paid || 0);
-                    const remaining = due - paid;
-
-                    let status = "Unpaid";
-                    let color = "#dc2626";
-
-                    if (paid >= due && due > 0) {
-                      status = "Paid";
-                      color = "#16a34a";
-                    } else if (paid > 0) {
-                      status = "Partial";
-                      color = "#d97706";
-                    }
-
-                    return (
+                  {payments.map(
+                    (p) => (
                       <div
-                        key={r.id}
+                        key={p.id}
                         style={{
-                          padding: "10px 12px",
-                          background: "white",
-                          border: "1px solid #f3f4f6",
+                          display:
+                            "flex",
+                          justifyContent:
+                            "space-between",
+                          alignItems:
+                            "center",
+                          padding:
+                            "10px 12px",
+                          background:
+                            "white",
+                          border:
+                            "1px solid #f3f4f6",
                           borderRadius: 8,
                         }}
                       >
-                        <div
+                        <span
                           style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: 4,
+                            fontSize: 14,
                           }}
                         >
-                          <span
-                            style={{
-                              fontSize: 14,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {monthLabel(r.billing_month)}
-                          </span>
+                          {p.payment_date}
+                        </span>
 
-                          <span
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 600,
-                              padding: "3px 10px",
-                              borderRadius: 999,
-                              background: color + "22",
-                              color: color,
-                            }}
-                          >
-                            {status}
-                          </span>
-                        </div>
+                        <span
+                          style={{
+                            fontSize: 14,
+                            fontWeight:
+                              600,
+                          }}
+                        >
+                          Rs {p.amount}
+                        </span>
 
-                        <div
+                        <span
                           style={{
                             fontSize: 12,
-                            color: "#6b7280",
+                            color:
+                              "#6b7280",
                           }}
                         >
-                          Monthly Fee: Rs {due} · Paid: Rs {paid} ·
-                          Remaining: Rs{" "}
-                          {remaining > 0 ? remaining : 0}
-                        </div>
+                          {
+                            p.payment_method
+                          }
+                        </span>
                       </div>
-                    );
-                  })}
+                    )
+                  )}
                 </div>
-              </>
-            )}
-          </>
-        )}
-
-        {/* PAYMENT HISTORY — ADMIN/OWNER ONLY */}
-        {!isTeacher && (
-          <>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                marginBottom: 12,
-              }}
-            >
-              Payment History
-            </h2>
-
-            {feeLoading ? (
-              <p>Loading payments...</p>
-            ) : payments.length === 0 ? (
-              <p
-                style={{
-                  color: "#6b7280",
-                  marginBottom: 24,
-                }}
-              >
-                No payments recorded yet.
-              </p>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  marginBottom: 24,
-                }}
-              >
-                {payments.map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "10px 12px",
-                      background: "white",
-                      border: "1px solid #f3f4f6",
-                      borderRadius: 8,
-                    }}
-                  >
-                    <span style={{ fontSize: 14 }}>
-                      {p.payment_date}
-                    </span>
-
-                    <span
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                      }}
-                    >
-                      Rs {p.amount}
-                    </span>
-
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: "#6b7280",
-                      }}
-                    >
-                      {p.payment_method}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
+        </>
       ) : (
         <form
           onSubmit={handleSave}
@@ -1030,7 +1243,9 @@ export default function StudentDetailPage() {
             Father Name
             <input
               name="father_name"
-              value={form.father_name || ""}
+              value={
+                form.father_name || ""
+              }
               onChange={handleChange}
               style={inputStyle}
             />
@@ -1052,7 +1267,9 @@ export default function StudentDetailPage() {
             <input
               type="date"
               name="admission_date"
-              value={form.admission_date || ""}
+              value={
+                form.admission_date || ""
+              }
               onChange={handleChange}
               style={inputStyle}
             />
@@ -1062,12 +1279,19 @@ export default function StudentDetailPage() {
             Gender
             <select
               name="gender"
-              value={form.gender || "male"}
+              value={
+                form.gender || "male"
+              }
               onChange={handleChange}
               style={inputStyle}
             >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
+              <option value="male">
+                Male
+              </option>
+
+              <option value="female">
+                Female
+              </option>
             </select>
           </label>
 
@@ -1075,14 +1299,21 @@ export default function StudentDetailPage() {
             Program
             <select
               name="program_id"
-              value={form.program_id || ""}
+              value={
+                form.program_id || ""
+              }
               onChange={handleChange}
               style={inputStyle}
             >
-              <option value="">Select Program</option>
+              <option value="">
+                Select Program
+              </option>
 
               {programs.map((p) => (
-                <option key={p.id} value={p.id}>
+                <option
+                  key={p.id}
+                  value={p.id}
+                >
                   {p.name}
                 </option>
               ))}
@@ -1093,32 +1324,46 @@ export default function StudentDetailPage() {
             Batch / Timing
             <select
               name="batch_id"
-              value={form.batch_id || ""}
+              value={
+                form.batch_id || ""
+              }
               onChange={handleChange}
               style={inputStyle}
             >
-              <option value="">Select Batch</option>
+              <option value="">
+                Select Batch
+              </option>
 
               {batches.map((b) => (
-                <option key={b.id} value={b.id}>
+                <option
+                  key={b.id}
+                  value={b.id}
+                >
                   {b.name}
                 </option>
               ))}
             </select>
           </label>
-
           <label>
             Primary Teacher
             <select
               name="primary_teacher_id"
-              value={form.primary_teacher_id || ""}
+              value={
+                form.primary_teacher_id ||
+                ""
+              }
               onChange={handleChange}
               style={inputStyle}
             >
-              <option value="">Select Teacher</option>
+              <option value="">
+                Select Teacher
+              </option>
 
               {teachers.map((t) => (
-                <option key={t.user_id} value={t.user_id}>
+                <option
+                  key={t.user_id}
+                  value={t.user_id}
+                >
                   {t.full_name}
                 </option>
               ))}
@@ -1130,7 +1375,9 @@ export default function StudentDetailPage() {
             <input
               type="number"
               name="monthly_fee"
-              value={form.monthly_fee || ""}
+              value={
+                form.monthly_fee || ""
+              }
               onChange={handleChange}
               style={inputStyle}
             />
@@ -1140,7 +1387,9 @@ export default function StudentDetailPage() {
             WhatsApp
             <input
               name="whatsapp"
-              value={form.whatsapp || ""}
+              value={
+                form.whatsapp || ""
+              }
               onChange={handleChange}
               style={inputStyle}
             />
@@ -1160,7 +1409,10 @@ export default function StudentDetailPage() {
             Alternate Phone
             <input
               name="alternate_phone"
-              value={form.alternate_phone || ""}
+              value={
+                form.alternate_phone ||
+                ""
+              }
               onChange={handleChange}
               style={inputStyle}
             />
@@ -1170,7 +1422,9 @@ export default function StudentDetailPage() {
             Address
             <textarea
               name="address"
-              value={form.address || ""}
+              value={
+                form.address || ""
+              }
               onChange={handleChange}
               style={inputStyle}
             />
@@ -1180,7 +1434,9 @@ export default function StudentDetailPage() {
             Notes
             <textarea
               name="notes"
-              value={form.notes || ""}
+              value={
+                form.notes || ""
+              }
               onChange={handleChange}
               style={inputStyle}
             />
@@ -1207,17 +1463,22 @@ export default function StudentDetailPage() {
                 fontWeight: 600,
               }}
             >
-              {saving ? "Saving..." : "Save Changes"}
+              {saving
+                ? "Saving..."
+                : "Save Changes"}
             </button>
 
             <button
               type="button"
-              onClick={() => setEditMode(false)}
+              onClick={() =>
+                setEditMode(false)
+              }
               style={{
                 padding: "12px 16px",
                 background: "#f3f4f6",
                 color: "#374151",
-                border: "1px solid #d1d5db",
+                border:
+                  "1px solid #d1d5db",
                 borderRadius: 8,
                 fontSize: 16,
                 fontWeight: 600,
@@ -1237,9 +1498,11 @@ function InfoRow({ label, value }) {
     <div
       style={{
         display: "flex",
-        justifyContent: "space-between",
+        justifyContent:
+          "space-between",
         padding: "10px 0",
-        borderBottom: "1px solid #f3f4f6",
+        borderBottom:
+          "1px solid #f3f4f6",
       }}
     >
       <span
