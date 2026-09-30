@@ -10,6 +10,7 @@ export default function StudentsListPage() {
   const [students, setStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [role, setRole] = useState(null);
 
   useEffect(() => {
     loadStudents();
@@ -30,12 +31,14 @@ export default function StudentsListPage() {
 
       const { data: orgMember, error: orgError } = await supabase
         .from("organization_members")
-        .select("organization_id")
+        .select("organization_id, role")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (orgError) throw orgError;
       if (!orgMember) throw new Error("No organization found for this user.");
+
+      setRole(orgMember.role);
 
       const { data: studentsData, error: studentsError } = await supabase
         .from("students")
@@ -57,9 +60,11 @@ export default function StudentsListPage() {
   }
 
   const filteredStudents = students.filter((s) => {
-    const matchesStatus = statusFilter === "all" || s.status === statusFilter;
+    const matchesStatus =
+      statusFilter === "all" || s.status === statusFilter;
 
     const term = searchTerm.trim().toLowerCase();
+
     const matchesSearch =
       !term ||
       s.name?.toLowerCase().includes(term) ||
@@ -80,20 +85,23 @@ export default function StudentsListPage() {
         }}
       >
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Students</h1>
-        <Link
-          href="/dashboard/students/add"
-          style={{
-            background: "#16a34a",
-            color: "white",
-            padding: "8px 14px",
-            borderRadius: 8,
-            fontSize: 14,
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
-          + Add Student
-        </Link>
+
+        {role !== "teacher" && (
+          <Link
+            href="/dashboard/students/add"
+            style={{
+              background: "#16a34a",
+              color: "white",
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            + Add Student
+          </Link>
+        )}
       </div>
 
       {errorMsg && (
@@ -110,7 +118,14 @@ export default function StudentsListPage() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginBottom: 16,
+          flexWrap: "wrap",
+        }}
+      >
         <input
           type="text"
           placeholder="Search by name, father name, or phone"
@@ -147,7 +162,13 @@ export default function StudentsListPage() {
       ) : filteredStudents.length === 0 ? (
         <p style={{ color: "#6b7280" }}>No students found.</p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
           {filteredStudents.map((s) => (
             <div
               key={s.id}
@@ -162,32 +183,83 @@ export default function StudentsListPage() {
               }}
             >
               <div>
-                <Link
-                  href={`/dashboard/students/${s.id}`}
-                  style={{ fontWeight: 600, fontSize: 16, color: "#111827", textDecoration: "none" }}
+                {role === "teacher" ? (
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 16,
+                      color: "#111827",
+                    }}
+                  >
+                    {s.name}
+                  </div>
+                ) : (
+                  <Link
+                    href={`/dashboard/students/${s.id}`}
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 16,
+                      color: "#111827",
+                      textDecoration: "none",
+                    }}
+                  >
+                    {s.name}
+                  </Link>
+                )}
+
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "#6b7280",
+                  }}
                 >
-                  {s.name}
-                </Link>
-                <div style={{ fontSize: 13, color: "#6b7280" }}>
                   {s.father_name ? `S/O ${s.father_name}` : ""}
                 </div>
-                <div style={{ fontSize: 13, color: "#6b7280" }}>
-                  {s.programs?.name || "No Program"} · {s.batches?.name || "No Batch"}
+
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "#6b7280",
+                  }}
+                >
+                  {s.programs?.name || "No Program"} ·{" "}
+                  {s.batches?.name || "No Batch"}
                 </div>
+
                 {s.phone && (
-                  <div style={{ fontSize: 13, color: "#6b7280" }}>{s.phone}</div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#6b7280",
+                    }}
+                  >
+                    {s.phone}
+                  </div>
                 )}
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 6,
+                }}
+              >
                 <span
                   style={{
                     fontSize: 12,
                     fontWeight: 600,
                     padding: "3px 10px",
                     borderRadius: 999,
-                    background: s.status === "active" ? "#dcfce7" : "#f3f4f6",
-                    color: s.status === "active" ? "#166534" : "#6b7280",
+                    background:
+                      s.status === "active"
+                        ? "#dcfce7"
+                        : "#f3f4f6",
+                    color:
+                      s.status === "active"
+                        ? "#166534"
+                        : "#6b7280",
                   }}
                 >
                   {s.status}
@@ -195,10 +267,17 @@ export default function StudentsListPage() {
 
                 {s.whatsapp && (
                   <a
-                    href={`https://wa.me/${s.whatsapp.replace(/[^0-9]/g, "")}`}
+                    href={`https://wa.me/${s.whatsapp.replace(
+                      /[^0-9]/g,
+                      ""
+                    )}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ fontSize: 13, color: "#16a34a", textDecoration: "none" }}
+                    style={{
+                      fontSize: 13,
+                      color: "#16a34a",
+                      textDecoration: "none",
+                    }}
                   >
                     WhatsApp
                   </a>
@@ -207,7 +286,11 @@ export default function StudentsListPage() {
                 {s.phone && (
                   <a
                     href={`tel:${s.phone}`}
-                    style={{ fontSize: 13, color: "#2563eb", textDecoration: "none" }}
+                    style={{
+                      fontSize: 13,
+                      color: "#2563eb",
+                      textDecoration: "none",
+                    }}
                   >
                     Call
                   </a>
