@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../utils/supabase";
+import { useRole } from "../../utils/role-context";
 
 export default function StudentsListPage() {
   const [loading, setLoading] = useState(true);
@@ -10,48 +11,33 @@ export default function StudentsListPage() {
   const [students, setStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [role, setRole] = useState(null);
+
+  const { role, orgId } = useRole();
 
   useEffect(() => {
+    if (!orgId || !role) return;
+
     loadStudents();
-  }, []);
+  }, [orgId, role]);
 
   async function loadStudents() {
     setLoading(true);
     setErrorMsg("");
 
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) throw userError;
-      if (!user) throw new Error("User not logged in.");
-
-      const { data: orgMember, error: orgError } = await supabase
-        .from("organization_members")
-        .select("organization_id, role")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (orgError) throw orgError;
-
-      if (!orgMember) {
-        throw new Error("No organization found for this user.");
+      if (!orgId || !role) {
+        throw new Error("No active organization found.");
       }
-
-      setRole(orgMember.role);
 
       const { data: studentsData, error: studentsError } =
         await supabase
           .from("students")
           .select(
-            orgMember.role === "teacher"
+            role === "teacher"
               ? "id, name, father_name, status, program_id, batch_id, programs(name), batches(name)"
               : "id, name, father_name, phone, whatsapp, status, monthly_fee, program_id, batch_id, programs(name), batches(name)"
           )
-          .eq("organization_id", orgMember.organization_id)
+          .eq("organization_id", orgId)
           .order("name");
 
       if (studentsError) throw studentsError;
@@ -319,4 +305,4 @@ export default function StudentsListPage() {
       )}
     </div>
   );
-}
+            }
