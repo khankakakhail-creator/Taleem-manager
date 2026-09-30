@@ -50,7 +50,9 @@ export default function DashboardHomePage() {
         .maybeSingle();
 
       if (orgError) throw orgError;
-      if (!orgMember) throw new Error("No organization found for this user.");
+      if (!orgMember) {
+        throw new Error("No organization found for this user.");
+      }
 
       const orgId = orgMember.organization_id;
       setRole(orgMember.role);
@@ -58,16 +60,29 @@ export default function DashboardHomePage() {
       const today = todayDateString();
       const billingMonth = currentBillingMonth();
 
-      const { count: studentCount, error: studentCountError } = await supabase
+      // -----------------------------
+      // TOTAL ACTIVE STUDENTS
+      // -----------------------------
+      const {
+        count: studentCount,
+        error: studentCountError,
+      } = await supabase
         .from("students")
         .select("id", { count: "exact", head: true })
         .eq("organization_id", orgId)
         .eq("status", "active");
 
       if (studentCountError) throw studentCountError;
+
       setTotalStudents(studentCount || 0);
 
-      const { data: todayAttendance, error: attendanceError } = await supabase
+      // -----------------------------
+      // TODAY'S ATTENDANCE
+      // -----------------------------
+      const {
+        data: todayAttendance,
+        error: attendanceError,
+      } = await supabase
         .from("attendance")
         .select("status, students(name)")
         .eq("organization_id", orgId)
@@ -85,10 +100,16 @@ export default function DashboardHomePage() {
 
       setPresentToday(present);
       setAbsentToday(absentList.length);
+
       setAbsentStudentNames(
-        absentList.map((a) => a.students?.name).filter(Boolean)
+        absentList
+          .map((a) => a.students?.name)
+          .filter(Boolean)
       );
 
+      // -----------------------------
+      // FEES
+      // -----------------------------
       const { data: feeRecords, error: feeError } = await supabase
         .from("fee_records")
         .select("amount_due, amount_paid")
@@ -105,34 +126,61 @@ export default function DashboardHomePage() {
       const due = (feeRecords || []).reduce(
         (sum, r) =>
           sum +
-          (Number(r.amount_due || 0) - Number(r.amount_paid || 0)),
+          (Number(r.amount_due || 0) -
+            Number(r.amount_paid || 0)),
         0
       );
 
       setFeesCollected(collected);
       setFeesDue(due > 0 ? due : 0);
 
-      const { data: payments, error: paymentsError } = await supabase
-        .from("payments")
-        .select("id, amount, payment_date, students(name)")
-        .eq("organization_id", orgId)
-        .order("payment_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(5);
+      // -----------------------------
+      // RECENT PAYMENTS
+      // Teacher کو payments کی
+      // query بھی نہیں چلانی
+      // -----------------------------
+      if (orgMember.role !== "teacher") {
+        const {
+          data: payments,
+          error: paymentsError,
+        } = await supabase
+          .from("payments")
+          .select(
+            "id, amount, payment_date, students(name)"
+          )
+          .eq("organization_id", orgId)
+          .order("payment_date", {
+            ascending: false,
+          })
+          .order("created_at", {
+            ascending: false,
+          })
+          .limit(5);
 
-      if (paymentsError) throw paymentsError;
+        if (paymentsError) throw paymentsError;
 
-      setRecentPayments(payments || []);
+        setRecentPayments(payments || []);
+      } else {
+        setRecentPayments([]);
+      }
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || "Failed to load dashboard.");
+      setErrorMsg(
+        err.message || "Failed to load dashboard."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 700, margin: "0 auto", padding: 16 }}>
+    <div
+      style={{
+        maxWidth: 700,
+        margin: "0 auto",
+        padding: 16,
+      }}
+    >
       <h1
         style={{
           fontSize: 22,
@@ -171,6 +219,9 @@ export default function DashboardHomePage() {
         <p>Loading dashboard...</p>
       ) : (
         <>
+          {/* =========================
+              STAT CARDS
+          ========================= */}
           <div
             style={{
               display: "grid",
@@ -204,6 +255,9 @@ export default function DashboardHomePage() {
             />
           </div>
 
+          {/* =========================
+              FEES DUE / ABSENT
+          ========================= */}
           <div
             style={{
               background: "#fef2f2",
@@ -231,11 +285,15 @@ export default function DashboardHomePage() {
                   color: "#991b1b",
                 }}
               >
-                Absent today: {absentStudentNames.join(", ")}
+                Absent today:{" "}
+                {absentStudentNames.join(", ")}
               </div>
             )}
           </div>
 
+          {/* =========================
+              QUICK ACTIONS
+          ========================= */}
           <div
             style={{
               display: "flex",
@@ -264,58 +322,79 @@ export default function DashboardHomePage() {
             )}
           </div>
 
-          <h2
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              marginBottom: 10,
-            }}
-          >
-            Recent Payments
-          </h2>
+          {/* =========================
+              RECENT PAYMENTS
+              ADMIN / OWNER ONLY
+          ========================= */}
+          {role !== "teacher" && (
+            <>
+              <h2
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  marginBottom: 10,
+                }}
+              >
+                Recent Payments
+              </h2>
 
-          {recentPayments.length === 0 ? (
-            <p
-              style={{
-                color: "#6b7280",
-                fontSize: 14,
-              }}
-            >
-              No payments recorded yet.
-            </p>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-              }}
-            >
-              {recentPayments.map((p) => (
-                <div
-                  key={p.id}
+              {recentPayments.length === 0 ? (
+                <p
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    background: "white",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    padding: 10,
-                    fontSize: 13,
+                    color: "#6b7280",
+                    fontSize: 14,
                   }}
                 >
-                  <span>{p.students?.name || "Unknown"}</span>
+                  No payments recorded yet.
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  {recentPayments.map((p) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        display: "flex",
+                        justifyContent:
+                          "space-between",
+                        background: "white",
+                        border:
+                          "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: 10,
+                        fontSize: 13,
+                      }}
+                    >
+                      <span>
+                        {p.students?.name ||
+                          "Unknown"}
+                      </span>
 
-                  <span style={{ color: "#6b7280" }}>
-                    {p.payment_date}
-                  </span>
+                      <span
+                        style={{
+                          color: "#6b7280",
+                        }}
+                      >
+                        {p.payment_date}
+                      </span>
 
-                  <span style={{ fontWeight: 600 }}>
-                    Rs {p.amount}
-                  </span>
+                      <span
+                        style={{
+                          fontWeight: 600,
+                        }}
+                      >
+                        Rs {p.amount}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -323,7 +402,11 @@ export default function DashboardHomePage() {
   );
 }
 
-function StatCard({ label, value, color }) {
+function StatCard({
+  label,
+  value,
+  color,
+}) {
   return (
     <div
       style={{
@@ -356,7 +439,10 @@ function StatCard({ label, value, color }) {
   );
 }
 
-function QuickAction({ href, label }) {
+function QuickAction({
+  href,
+  label,
+}) {
   return (
     <Link
       href={href}
@@ -373,4 +459,4 @@ function QuickAction({ href, label }) {
       {label}
     </Link>
   );
-}
+        }
