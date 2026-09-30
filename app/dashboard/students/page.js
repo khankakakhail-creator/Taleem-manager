@@ -36,19 +36,23 @@ export default function StudentsListPage() {
         .maybeSingle();
 
       if (orgError) throw orgError;
+
       if (!orgMember) {
         throw new Error("No organization found for this user.");
       }
 
       setRole(orgMember.role);
 
-      const { data: studentsData, error: studentsError } = await supabase
-        .from("students")
-        .select(
-          "id, name, father_name, phone, whatsapp, status, monthly_fee, program_id, batch_id, programs(name), batches(name)"
-        )
-        .eq("organization_id", orgMember.organization_id)
-        .order("name");
+      const { data: studentsData, error: studentsError } =
+        await supabase
+          .from("students")
+          .select(
+            orgMember.role === "teacher"
+              ? "id, name, father_name, status, program_id, batch_id, programs(name), batches(name)"
+              : "id, name, father_name, phone, whatsapp, status, monthly_fee, program_id, batch_id, programs(name), batches(name)"
+          )
+          .eq("organization_id", orgMember.organization_id)
+          .order("name");
 
       if (studentsError) throw studentsError;
 
@@ -71,13 +75,20 @@ export default function StudentsListPage() {
       !term ||
       s.name?.toLowerCase().includes(term) ||
       s.father_name?.toLowerCase().includes(term) ||
-      s.phone?.toLowerCase().includes(term);
+      (role !== "teacher" &&
+        s.phone?.toLowerCase().includes(term));
 
     return matchesStatus && matchesSearch;
   });
 
   return (
-    <div style={{ maxWidth: 700, margin: "0 auto", padding: 16 }}>
+    <div
+      style={{
+        maxWidth: 700,
+        margin: "0 auto",
+        padding: 16,
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -86,7 +97,14 @@ export default function StudentsListPage() {
           marginBottom: 16,
         }}
       >
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Students</h1>
+        <h1
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+          }}
+        >
+          Students
+        </h1>
 
         {role !== "teacher" && (
           <Link
@@ -130,7 +148,11 @@ export default function StudentsListPage() {
       >
         <input
           type="text"
-          placeholder="Search by name, father name, or phone"
+          placeholder={
+            role === "teacher"
+              ? "Search by name or father name"
+              : "Search by name, father name, or phone"
+          }
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
@@ -162,7 +184,9 @@ export default function StudentsListPage() {
       {loading ? (
         <p>Loading students...</p>
       ) : filteredStudents.length === 0 ? (
-        <p style={{ color: "#6b7280" }}>No students found.</p>
+        <p style={{ color: "#6b7280" }}>
+          No students found.
+        </p>
       ) : (
         <div
           style={{
@@ -215,7 +239,9 @@ export default function StudentsListPage() {
                     color: "#6b7280",
                   }}
                 >
-                  {s.father_name ? `S/O ${s.father_name}` : ""}
+                  {s.father_name
+                    ? `S/O ${s.father_name}`
+                    : ""}
                 </div>
 
                 <div
@@ -227,17 +253,6 @@ export default function StudentsListPage() {
                   {s.programs?.name || "No Program"} ·{" "}
                   {s.batches?.name || "No Batch"}
                 </div>
-
-                {s.phone && (
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "#6b7280",
-                    }}
-                  >
-                    {s.phone}
-                  </div>
-                )}
               </div>
 
               <div
@@ -267,7 +282,6 @@ export default function StudentsListPage() {
                   {s.status}
                 </span>
 
-                {/* WhatsApp and Call are Admin/Owner only */}
                 {role !== "teacher" && s.whatsapp && (
                   <a
                     href={`https://wa.me/${s.whatsapp.replace(
@@ -305,4 +319,4 @@ export default function StudentsListPage() {
       )}
     </div>
   );
-                      }
+}
