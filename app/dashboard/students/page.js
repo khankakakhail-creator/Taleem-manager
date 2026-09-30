@@ -36,7 +36,9 @@ export default function StudentsListPage() {
         .maybeSingle();
 
       if (orgError) throw orgError;
-      if (!orgMember) throw new Error("No organization found for this user.");
+      if (!orgMember) {
+        throw new Error("No organization found for this user.");
+      }
 
       setRole(orgMember.role);
 
@@ -265,7 +267,8 @@ export default function StudentsListPage() {
                   {s.status}
                 </span>
 
-                {s.whatsapp && (
+                {/* WhatsApp and Call are Admin/Owner only */}
+                {role !== "teacher" && s.whatsapp && (
                   <a
                     href={`https://wa.me/${s.whatsapp.replace(
                       /[^0-9]/g,
@@ -283,7 +286,7 @@ export default function StudentsListPage() {
                   </a>
                 )}
 
-                {s.phone && (
+                {role !== "teacher" && s.phone && (
                   <a
                     href={`tel:${s.phone}`}
                     style={{
