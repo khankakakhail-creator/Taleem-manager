@@ -4,79 +4,70 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabase";
 import { useRole } from "../../utils/role-context";
 
-function getToday() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+const STATUS = [
+  ["present", "Present"],
+  ["absent", "Absent"],
+  ["leave", "Leave"],
+  ["late", "Late"],
+];
 
-  return `${year}-${month}-${day}`;
+const REASONS = [
+  "بیماری",
+  "سفر",
+  "گھر کا کام",
+  "خوشی/غم",
+  "موسم",
+  "بغیر اطلاع",
+  "ذاتی کام",
+  "Custom",
+];
+
+const LATE_TIMES = [
+  "5 منٹ",
+  "10 منٹ",
+  "15 منٹ",
+  "30 منٹ",
+  "1 گھنٹہ",
+  "2 گھنٹے",
+  "Custom",
+];
+
+function today() {
+  const d = new Date();
+
+  return (
+    d.getFullYear() +
+    "-" +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(d.getDate()).padStart(2, "0")
+  );
 }
-
-const STATUS_OPTIONS = [
-  { value: "present", label: "Present" },
-  { value: "absent", label: "Absent" },
-  { value: "leave", label: "Leave" },
-  { value: "late", label: "Late" },
-];
-
-const REASON_OPTIONS = [
-  { value: "بیماری", label: "بیماری" },
-  { value: "سفر", label: "سفر" },
-  { value: "گھر کا کام", label: "گھر کا کام" },
-  { value: "خوشی/غم", label: "خوشی/غم" },
-  { value: "موسم", label: "موسم" },
-  { value: "بغیر اطلاع", label: "بغیر اطلاع" },
-  { value: "ذاتی کام", label: "ذاتی کام" },
-  { value: "custom", label: "Custom" },
-];
-
-const LATE_OPTIONS = [
-  { value: "5 منٹ", label: "5 منٹ" },
-  { value: "10 منٹ", label: "10 منٹ" },
-  { value: "15 منٹ", label: "15 منٹ" },
-  { value: "30 منٹ", label: "30 منٹ" },
-  { value: "1 گھنٹہ", label: "1 گھنٹہ" },
-  { value: "2 گھنٹے", label: "2 گھنٹے" },
-  { value: "custom", label: "Custom" },
-];
 
 export default function AttendancePage() {
   const { orgId, userId } = useRole();
 
   const [students, setStudents] = useState([]);
-  const [attendance, setAttendance] = useState({});
-  const [notes, setNotes] = useState({});
-  const [reasons, setReasons] = useState({});
-  const [customReasons, setCustomReasons] = useState({});
-  const [lateTimes, setLateTimes] = useState({});
-  const [customLateTimes, setCustomLateTimes] = useState({});
+  const [records, setRecords] = useState({});
+  const [date, setDate] = useState(today());
 
-  const [selectedDate, setSelectedDate] = useState(getToday());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!orgId || !userId) {
-      return;
-    }
-
+    if (!orgId) return;
     loadStudents();
-  }, [orgId, userId]);
+  }, [orgId]);
 
   useEffect(() => {
-    if (!orgId) {
-      return;
-    }
-
+    if (!orgId || !date) return;
     loadAttendance();
-  }, [orgId, selectedDate]);
+  }, [orgId, date]);
 
   async function loadStudents() {
     setLoading(true);
-    setErrorMessage("");
 
     const { data, error } = await supabase
       .from("students")
@@ -86,8 +77,7 @@ export default function AttendancePage() {
       .order("name");
 
     if (error) {
-      console.error(error);
-      setErrorMessage(error.message);
+      setError(error.message);
       setStudents([]);
     } else {
       setStudents(data || []);
@@ -97,231 +87,207 @@ export default function AttendancePage() {
   }
 
   async function loadAttendance() {
-    setErrorMessage("");
-
     const { data, error } = await supabase
       .from("attendance")
       .select("student_id, status, notes")
       .eq("organization_id", orgId)
-      .eq("attendance_date", selectedDate);
+      .eq("attendance_date", date);
 
     if (error) {
-      console.error(error);
-      setErrorMessage(error.message);
+      setError(error.message);
       return;
     }
 
-    const newAttendance = {};
-    const newNotes = {};
-    const newReasons = {};
-    const newCustomReasons = {};
-    const newLateTimes = {};
-    const newCustomLateTimes = {};
+    const next = {};
 
-    (data || []).forEach((record) => {
-      const studentId = record.student_id;
-      const note = record.notes || "";
+    (data || []).forEach((row) => {
+      const item = {
+        status: row.status,
+        reason: "",
+        customReason: "",
+        late: "",
+        customLate: "",
+        note: "",
+      };
 
-      newAttendance[studentId] = record.status;
-      newNotes[studentId] = "";
+      const text = row.notes || "";
 
       if (
-        record.status === "absent" ||
-        record.status === "leave"
+        row.status === "absent" ||
+        row.status === "leave"
       ) {
-        if (note.startsWith("Reason: ")) {
-          const text = note
+        if (text.startsWith("Reason: ")) {
+          const parts = text
             .replace("Reason: ", "")
-            .split(" | Note: ")[0];
+            .split(" | Note: ");
 
-          const isKnownReason = REASON_OPTIONS.some(
-            (item) =>
-              item.value === text &&
-              item.value !== "custom"
-          );
+          const reason = parts[0];
 
-          if (isKnownReason) {
-            newReasons[studentId] = text;
+          if (REASONS.includes(reason)) {
+            item.reason = reason;
           } else {
-            newReasons[studentId] = "custom";
-            newCustomReasons[studentId] = text;
+            item.reason = "Custom";
+            item.customReason = reason;
           }
 
-          if (note.includes(" | Note: ")) {
-            newNotes[studentId] =
-              note.split(" | Note: ")[1];
-          }
+          item.note = parts[1] || "";
+        } else {
+          item.note = text;
         }
-      }
-
-      if (record.status === "late") {
-        if (note.startsWith("Late: ")) {
-          const text = note
+      } else if (row.status === "late") {
+        if (text.startsWith("Late: ")) {
+          const parts = text
             .replace("Late: ", "")
-            .split(" | Note: ")[0];
+            .split(" | Note: ");
 
-          const isKnownLate = LATE_OPTIONS.some(
-            (item) =>
-              item.value === text &&
-              item.value !== "custom"
-          );
+          const late = parts[0];
 
-          if (isKnownLate) {
-            newLateTimes[studentId] = text;
+          if (LATE_TIMES.includes(late)) {
+            item.late = late;
           } else {
-            newLateTimes[studentId] = "custom";
-            newCustomLateTimes[studentId] = text;
+            item.late = "Custom";
+            item.customLate = late;
           }
 
-          if (note.includes(" | Note: ")) {
-            newNotes[studentId] =
-              note.split(" | Note: ")[1];
-          }
+          item.note = parts[1] || "";
+        } else {
+          item.note = text;
         }
+      } else {
+        item.note = text;
       }
 
-      if (record.status === "present") {
-        newNotes[studentId] = note;
-      }
+      next[row.student_id] = item;
     });
 
-    setAttendance(newAttendance);
-    setNotes(newNotes);
-    setReasons(newReasons);
-    setCustomReasons(newCustomReasons);
-    setLateTimes(newLateTimes);
-    setCustomLateTimes(newCustomLateTimes);
+    setRecords(next);
+  }
+
+  function updateRecord(studentId, field, value) {
+    setRecords((old) => ({
+      ...old,
+      [studentId]: {
+        ...(old[studentId] || {}),
+        [field]: value,
+      },
+    }));
   }
 
   function changeStatus(studentId, status) {
-    setAttendance((previous) => ({
-      ...previous,
-      [studentId]: status,
+    setRecords((old) => ({
+      ...old,
+      [studentId]: {
+        ...(old[studentId] || {}),
+        status,
+        reason:
+          status === "absent" || status === "leave"
+            ? old[studentId]?.reason || ""
+            : "",
+        customReason:
+          status === "absent" || status === "leave"
+            ? old[studentId]?.customReason || ""
+            : "",
+        late:
+          status === "late"
+            ? old[studentId]?.late || ""
+            : "",
+        customLate:
+          status === "late"
+            ? old[studentId]?.customLate || ""
+            : "",
+        note: old[studentId]?.note || "",
+      },
     }));
-
-    if (status !== "absent" && status !== "leave") {
-      setReasons((previous) => ({
-        ...previous,
-        [studentId]: "",
-      }));
-
-      setCustomReasons((previous) => ({
-        ...previous,
-        [studentId]: "",
-      }));
-    }
-
-    if (status !== "late") {
-      setLateTimes((previous) => ({
-        ...previous,
-        [studentId]: "",
-      }));
-
-      setCustomLateTimes((previous) => ({
-        ...previous,
-        [studentId]: "",
-      }));
-    }
   }
 
-  function getNote(studentId, status) {
-    const extraNote = (notes[studentId] || "").trim();
+  function buildNote(item) {
+    if (!item) return null;
 
-    if (status === "absent" || status === "leave") {
-      const selectedReason = reasons[studentId];
+    const extra = (item.note || "").trim();
 
-      if (!selectedReason) {
-        return null;
-      }
-
+    if (
+      item.status === "absent" ||
+      item.status === "leave"
+    ) {
       const reason =
-        selectedReason === "custom"
-          ? (customReasons[studentId] || "").trim()
-          : selectedReason;
+        item.reason === "Custom"
+          ? (item.customReason || "").trim()
+          : item.reason;
 
-      if (!reason) {
-        return null;
-      }
+      if (!reason) return null;
 
-      if (extraNote) {
-        return `Reason: ${reason} | Note: ${extraNote}`;
-      }
-
-      return `Reason: ${reason}`;
+      return extra
+        ? `Reason: ${reason} | Note: ${extra}`
+        : `Reason: ${reason}`;
     }
 
-    if (status === "late") {
-      const selectedLate = lateTimes[studentId];
+    if (item.status === "late") {
+      const late =
+        item.late === "Custom"
+          ? (item.customLate || "").trim()
+          : item.late;
 
-      if (!selectedLate) {
-        return null;
-      }
+      if (!late) return null;
 
-      const lateTime =
-        selectedLate === "custom"
-          ? (customLateTimes[studentId] || "").trim()
-          : selectedLate;
-
-      if (!lateTime) {
-        return null;
-      }
-
-      if (extraNote) {
-        return `Late: ${lateTime} | Note: ${extraNote}`;
-      }
-
-      return `Late: ${lateTime}`;
+      return extra
+        ? `Late: ${late} | Note: ${extra}`
+        : `Late: ${late}`;
     }
 
-    return extraNote || null;
+    return extra || null;
   }
 
   async function saveAttendance() {
     setSaving(true);
-    setErrorMessage("");
-    setSuccessMessage("");
+    setMessage("");
+    setError("");
 
     try {
       if (!orgId || !userId) {
-        throw new Error("Organization not found.");
-      }
-
-      const selectedStudents = Object.entries(attendance);
-
-      if (selectedStudents.length === 0) {
-        throw new Error(
-          "Please mark attendance for at least one student."
-        );
+        throw new Error("Organization or user not found.");
       }
 
       const rows = [];
 
-      for (const [studentId, status] of selectedStudents) {
-        const note = getNote(studentId, status);
+      for (const student of students) {
+        const item = records[student.id];
+
+        if (!item || !item.status) {
+          continue;
+        }
+
+        const note = buildNote(item);
 
         if (
-          (status === "absent" || status === "leave") &&
+          (item.status === "absent" ||
+            item.status === "leave") &&
           !note
         ) {
           throw new Error(
-            "Please select a reason for every Absent/Leave student."
+            `${student.name}: reason is required.`
           );
         }
 
-        if (status === "late" && !note) {
+        if (item.status === "late" && !note) {
           throw new Error(
-            "Please select the late duration for every Late student."
+            `${student.name}: late duration is required.`
           );
         }
 
         rows.push({
           organization_id: orgId,
-          student_id: studentId,
-          attendance_date: selectedDate,
-          status: status,
+          student_id: student.id,
+          attendance_date: date,
+          status: item.status,
           notes: note,
           marked_by_user_id: userId,
         });
+      }
+
+      if (rows.length === 0) {
+        throw new Error(
+          "Please mark at least one student."
+        );
       }
 
       const { error } = await supabase
@@ -334,38 +300,38 @@ export default function AttendancePage() {
         throw error;
       }
 
-      setSuccessMessage(
-        "Attendance saved successfully."
-      );
+      setMessage("Attendance saved successfully.");
 
       await loadAttendance();
-    } catch (error) {
-      console.error(error);
-      setErrorMessage(
-        error.message || "Failed to save attendance."
-      );
-    } finally {
-      setSaving(false);
+    } catch (err) {
+      setError(err.message || "Failed to save attendance.");
     }
+
+    setSaving(false);
   }
 
-  const markedCount = Object.values(attendance).filter(
-    Boolean
-  ).length;
+  if (loading) {
+    return (
+      <main style={{ padding: 20 }}>
+        <h1>Attendance</h1>
+        <p>Loading students...</p>
+      </main>
+    );
+  }
 
   return (
-    <div
+    <main
       style={{
-        maxWidth: "650px",
+        maxWidth: 700,
         margin: "0 auto",
-        padding: "16px",
+        padding: 16,
       }}
     >
       <h1
         style={{
-          fontSize: "24px",
-          fontWeight: "700",
-          marginBottom: "16px",
+          fontSize: 24,
+          fontWeight: 700,
+          marginBottom: 16,
         }}
       >
         Attendance
@@ -373,19 +339,17 @@ export default function AttendancePage() {
 
       <div
         style={{
-          background: "#ffffff",
-          border: "1px solid #e5e7eb",
-          borderRadius: "12px",
-          padding: "14px",
-          marginBottom: "16px",
+          border: "1px solid #ddd",
+          borderRadius: 10,
+          padding: 12,
+          marginBottom: 16,
         }}
       >
         <label
           style={{
             display: "block",
-            fontSize: "14px",
-            fontWeight: "600",
-            marginBottom: "6px",
+            marginBottom: 6,
+            fontWeight: 600,
           }}
         >
           Date
@@ -393,321 +357,329 @@ export default function AttendancePage() {
 
         <input
           type="date"
-          value={selectedDate}
-          onChange={(event) =>
-            setSelectedDate(event.target.value)
-          }
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
           style={{
             width: "100%",
-            padding: "10px",
-            border: "1px solid #d1d5db",
-            borderRadius: "8px",
-            fontSize: "16px",
+            padding: 10,
+            border: "1px solid #ccc",
+            borderRadius: 8,
           }}
         />
       </div>
 
-      {errorMessage && (
+      {error && (
         <div
           style={{
             background: "#fee2e2",
             color: "#991b1b",
-            padding: "12px",
-            borderRadius: "8px",
-            marginBottom: "16px",
-            direction: "rtl",
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 12,
           }}
         >
-          {errorMessage}
+          {error}
         </div>
       )}
 
-      {successMessage && (
+      {message && (
         <div
           style={{
             background: "#dcfce7",
             color: "#166534",
-            padding: "12px",
-            borderRadius: "8px",
-            marginBottom: "16px",
-            direction: "rtl",
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 12,
           }}
         >
-          {successMessage}
+          {message}
         </div>
       )}
 
-      {loading ? (
-        <p>Loading students...</p>
-      ) : students.length === 0 ? (
-        <div
-          style={{
-            padding: "20px",
-            textAlign: "center",
-            color: "#6b7280",
-          }}
-        >
-          No active students found.
-        </div>
+      {students.length === 0 ? (
+        <p>No active students found.</p>
       ) : (
         <>
-          <div
-            style={{
-              fontSize: "13px",
-              color: "#6b7280",
-              marginBottom: "10px",
-            }}
-          >
-            {markedCount} of {students.length} marked
-          </div>
+          {students.map((student) => {
+            const item = records[student.id] || {};
+            const status = item.status || "";
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "12px",
-            }}
-          >
-            {students.map((student) => {
-              const status = attendance[student.id];
-
-              return (
+            return (
+              <div
+                key={student.id}
+                style={{
+                  border: "1px solid #ddd",
+                  borderRadius: 10,
+                  padding: 14,
+                  marginBottom: 12,
+                }}
+              >
                 <div
-                  key={student.id}
                   style={{
-                    background: "#ffffff",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "12px",
-                    padding: "14px",
+                    fontSize: 17,
+                    fontWeight: 700,
                   }}
                 >
+                  {student.name}
+                </div>
+
+                {student.father_name && (
                   <div
                     style={{
-                      fontSize: "16px",
-                      fontWeight: "700",
-                      marginBottom: "4px",
+                      color: "#666",
+                      fontSize: 13,
+                      marginTop: 3,
+                      marginBottom: 10,
                     }}
                   >
-                    {student.name}
+                    S/O {student.father_name}
                   </div>
+                )}
 
-                  {student.father_name && (
-                    <div
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 6,
+                  }}
+                >
+                  {STATUS.map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        changeStatus(student.id, value)
+                      }
                       style={{
-                        fontSize: "13px",
-                        color: "#6b7280",
-                        marginBottom: "10px",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #ccc",
+                        background:
+                          status === value
+                            ? "#2563eb"
+                            : "#fff",
+                        color:
+                          status === value
+                            ? "#fff"
+                            : "#333",
+                        fontWeight: 600,
                       }}
                     >
-                      S/O {student.father_name}
-                    </div>
-                  )}
+                      {label}
+                    </button>
+                  ))}
+                </div>
 
+                {(status === "absent" ||
+                  status === "leave") && (
                   <div
+                    dir="rtl"
                     style={{
-                      display: "flex",
-                      gap: "6px",
-                      flexWrap: "wrap",
+                      marginTop: 12,
+                      padding: 12,
+                      background: "#f7f7f7",
+                      borderRadius: 8,
                     }}
                   >
-                    {STATUS_OPTIONS.map((option) => {
-                      const selected =
-                        status === option.value;
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        marginBottom: 8,
+                      }}
+                    >
+                      وجہ منتخب کریں
+                    </div>
 
-                      return (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 6,
+                      }}
+                    >
+                      {REASONS.map((reason) => (
                         <button
-                          key={option.value}
+                          key={reason}
                           type="button"
                           onClick={() =>
-                            changeStatus(
+                            updateRecord(
                               student.id,
-                              option.value
+                              "reason",
+                              reason
                             )
                           }
                           style={{
-                            padding: "8px 12px",
-                            borderRadius: "8px",
-                            border: selected
-                              ? "1px solid #2563eb"
-                              : "1px solid #d1d5db",
-                            background: selected
-                              ? "#2563eb"
-                              : "#ffffff",
-                            color: selected
-                              ? "#ffffff"
-                              : "#374151",
-                            fontWeight: "600",
-                            fontSize: "13px",
+                            padding: "7px 10px",
+                            borderRadius: 7,
+                            border: "1px solid #ccc",
+                            background:
+                              item.reason === reason
+                                ? "#2563eb"
+                                : "#fff",
+                            color:
+                              item.reason === reason
+                                ? "#fff"
+                                : "#333",
                           }}
                         >
-                          {option.label}
+                          {reason}
                         </button>
-                      );
-                    })}
-                  </div>
+                      ))}
+                    </div>
 
-                  {(status === "absent" ||
-                    status === "leave") && (
+                    {item.reason === "Custom" && (
+                      <input
+                        type="text"
+                        value={item.customReason || ""}
+                        onChange={(e) =>
+                          updateRecord(
+                            student.id,
+                            "customReason",
+                            e.target.value
+                          )
+                        }
+                        placeholder="اپنی وجہ لکھیں"
+                        style={{
+                          width: "100%",
+                          marginTop: 8,
+                          padding: 9,
+                          border: "1px solid #ccc",
+                          borderRadius: 7,
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {status === "late" && (
+                  <div
+                    dir="rtl"
+                    style={{
+                      marginTop: 12,
+                      padding: 12,
+                      background: "#f7f7f7",
+                      borderRadius: 8,
+                    }}
+                  >
                     <div
                       style={{
-                        marginTop: "12px",
-                        padding: "12px",
-                        background: "#f9fafb",
-                        borderRadius: "10px",
-                        direction: "rtl",
+                        fontWeight: 700,
+                        marginBottom: 8,
                       }}
                     >
-                      <div
-                        style={{
-                          fontWeight: "700",
-                          fontSize: "14px",
-                          marginBottom: "8px",
-                        }}
-                      >
-                        وجہ منتخب کریں
-                      </div>
+                      کتنی دیر سے آیا؟
+                    </div>
 
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "6px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        {REASON_OPTIONS.map((option) => {
-                          const selected =
-                            reasons[student.id] ===
-                            option.value;
-
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() =>
-                                setReasons((previous) => ({
-                                  ...previous,
-                                  [student.id]:
-                                    option.value,
-                                }))
-                              }
-                              style={{
-                                padding: "7px 10px",
-                                borderRadius: "7px",
-                                border: selected
-                                  ? "1px solid #2563eb"
-                                  : "1px solid #d1d5db",
-                                background: selected
-                                  ? "#2563eb"
-                                  : "#ffffff",
-                                color: selected
-                                  ? "#ffffff"
-                                  : "#374151",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {option.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {reasons[student.id] ===
-                        "custom" && (
-                        <input
-                          type="text"
-                          value={
-                            customReasons[student.id] ||
-                            ""
-                          }
-                          onChange={(event) =>
-                            setCustomReasons(
-                              (previous) => ({
-                                ...previous,
-                                [student.id]:
-                                  event.target.value,
-                              })
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 6,
+                      }}
+                    >
+                      {LATE_TIMES.map((time) => (
+                        <button
+                          key={time}
+                          type="button"
+                          onClick={() =>
+                            updateRecord(
+                              student.id,
+                              "late",
+                              time
                             )
                           }
-                          placeholder="اپنی وجہ لکھیں"
                           style={{
-                            width: "100%",
-                            marginTop: "8px",
-                            padding: "9px",
-                            borderRadius: "7px",
-                            border:
-                              "1px solid #d1d5db",
-                            fontSize: "13px",
-                            direction: "rtl",
+                            padding: "7px 10px",
+                            borderRadius: 7,
+                            border: "1px solid #ccc",
+                            background:
+                              item.late === time
+                                ? "#2563eb"
+                                : "#fff",
+                            color:
+                              item.late === time
+                                ? "#fff"
+                                : "#333",
                           }}
-                        />
-                      )}
+                        >
+                          {time}
+                        </button>
+                      ))}
                     </div>
-                  )}
 
-                  {status === "late" && (
-                    <div
-                      style={{
-                        marginTop: "12px",
-                        padding: "12px",
-                        background: "#f9fafb",
-                        borderRadius: "10px",
-                        direction: "rtl",
-                      }}
-                    >
-                      <div
+                    {item.late === "Custom" && (
+                      <input
+                        type="text"
+                        value={item.customLate || ""}
+                        onChange={(e) =>
+                          updateRecord(
+                            student.id,
+                            "customLate",
+                            e.target.value
+                          )
+                        }
+                        placeholder="مثلاً 45 منٹ"
                         style={{
-                          fontWeight: "700",
-                          fontSize: "14px",
-                          marginBottom: "8px",
+                          width: "100%",
+                          marginTop: 8,
+                          padding: 9,
+                          border: "1px solid #ccc",
+                          borderRadius: 7,
                         }}
-                      >
-                        کتنی دیر سے آیا؟
-                      </div>
+                      />
+                    )}
+                  </div>
+                )}
 
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "6px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        {LATE_OPTIONS.map((option) => {
-                          const selected =
-                            lateTimes[student.id] ===
-                            option.value;
+                {status && (
+                  <input
+                    type="text"
+                    dir="rtl"
+                    value={item.note || ""}
+                    onChange={(e) =>
+                      updateRecord(
+                        student.id,
+                        "note",
+                        e.target.value
+                      )
+                    }
+                    placeholder="اضافی نوٹ (اختیاری)"
+                    style={{
+                      width: "100%",
+                      marginTop: 10,
+                      padding: 9,
+                      border: "1px solid #ccc",
+                      borderRadius: 7,
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
 
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() =>
-                                setLateTimes(
-                                  (previous) => ({
-                                    ...previous,
-                                    [student.id]:
-                                      option.value,
-                                  })
-                                )
-                              }
-                              style={{
-                                padding: "7px 10px",
-                                borderRadius: "7px",
-                                border: selected
-                                  ? "1px solid #2563eb"
-                                  : "1px solid #d1d5db",
-                                background: selected
-                                  ? "#2563eb"
-                                  : "#ffffff",
-                                color: selected
-                                  ? "#ffffff"
-                                  : "#374151",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {option.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-  
+          <button
+            type="button"
+            onClick={saveAttendance}
+            disabled={saving}
+            style={{
+              width: "100%",
+              padding: 14,
+              border: 0,
+              borderRadius: 10,
+              background: saving
+                ? "#86efac"
+                : "#16a34a",
+              color: "#fff",
+              fontSize: 16,
+              fontWeight: 700,
+            }}
+          >
+            {saving
+              ? "Saving..."
+              : "Save Attendance"}
+          </button>
+        </>
+      )}
+    </main>
+  );
+}
